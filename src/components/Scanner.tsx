@@ -69,19 +69,23 @@ export default function Scanner() {
 
   if (result) {
     return (
-      <div className={`rounded-xl2 p-6 text-center shadow-card ${result.ok ? "bg-spring-green/10" : "bg-spring-red/10"}`}>
+      <div className={`rounded-xl2 border p-6 text-center ${result.ok ? "border-line bg-white" : "border-spring-red/30 bg-spring-red/5"}`}>
         <p className="text-4xl">{result.ok ? "✅" : "🚫"}</p>
         <p className="mt-3 text-[16px] font-semibold">{result.message}</p>
-        {result.pointsEarned > 0 && (
-          <p className="mt-2 text-[14px] text-smoke">+{result.pointsEarned} points</p>
-        )}
-        {result.completedChallenges.map((c) => (
-          <p key={c} className="mt-2 rounded-xl bg-white px-3 py-2 text-[14px] font-semibold shadow-card">
-            🎉 Challenge complete: {c}
-          </p>
+        {result.completedChallenges.map((c, i) => (
+          <div key={c} className="mt-3 rounded-xl2 bg-ink p-4 text-white">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">Challenge complete</p>
+            <p className="mt-1 font-display text-[20px]">{c}</p>
+            {result.earnedRewards[i] && (
+              <p className="mt-2 rounded-xl bg-sage px-3 py-2 text-[14px] font-semibold text-ink">
+                Reward unlocked: {result.earnedRewards[i]}
+              </p>
+            )}
+            <p className="mt-2 text-[12px] text-white/60">We&apos;ll let you know when it&apos;s ready at reception.</p>
+          </div>
         ))}
         {result.newBadges.map((b) => (
-          <p key={b} className="mt-2 rounded-xl bg-white px-3 py-2 text-[14px] font-semibold shadow-card">
+          <p key={b} className="mt-2 rounded-xl border border-line bg-chalk px-3 py-2 text-[14px] font-semibold">
             New badge: {b}
           </p>
         ))}

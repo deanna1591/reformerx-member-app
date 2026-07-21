@@ -27,7 +27,7 @@ export default function ProfilePage() {
     .map((ci) => ({ ci, cls: db.classes.find((c) => c.id === ci.classId) }));
 
   const stat = (label: string, value: string | number) => (
-    <div className="rounded-xl2 bg-card p-4 shadow-card">
+    <div className="rounded-xl2 border border-line bg-white p-4">
       <p className="font-display text-[26px] tabular-nums leading-none">{value}</p>
       <p className="mt-1.5 text-[12px] font-medium uppercase tracking-wider text-smoke">{label}</p>
     </div>
@@ -58,7 +58,7 @@ export default function ProfilePage() {
         <h2 className="font-display text-[22px]">Badges</h2>
         <div className="mt-3 grid grid-cols-2 gap-3">
           {badges.map((b) => (
-            <div key={b.badgeId} className="rounded-xl2 bg-card p-4 shadow-card">
+            <div key={b.badgeId} className="rounded-xl2 border border-line bg-white p-4">
               <p className="text-2xl">{b.def.emoji}</p>
               <p className="mt-1 text-[14px] font-semibold">{b.def.name}</p>
               <p className="text-[12px] text-smoke">{fmtDate(b.earnedAt)}</p>

@@ -13,75 +13,91 @@ export default function ChallengesPage() {
   if (!member) redirect("/login");
   const db = getDB();
   const active = db.challenges.filter((c) => c.active);
-  const joined = new Set(
-    db.challengeProgress.filter((p) => p.memberId === member.id).map((p) => p.challengeId)
-  );
+  const progressOf = (id: string) =>
+    db.challengeProgress.find((p) => p.memberId === member.id && p.challengeId === id);
 
-  const mine = active.filter((c) => joined.has(c.id));
-  const available = active.filter((c) => !joined.has(c.id));
-
-  const card = (ch: (typeof active)[number], isJoined: boolean) => {
-    const value = isJoined ? computeProgress(member.id, ch) : 0;
-    const done = db.challengeProgress.find(
-      (p) => p.memberId === member.id && p.challengeId === ch.id
-    )?.completedAt;
-    return (
-      <div key={ch.id} className="rounded-xl2 bg-card p-4 shadow-card">
-        <Link href={`/challenges/${ch.id}`} className="block">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-[16px] font-semibold">
-                {ch.emoji} {ch.name} {done && <span className="text-spring-green">✓</span>}
-              </p>
-              <p className="mt-1 text-[13px] leading-snug text-smoke">{ch.description}</p>
-            </div>
-            {isJoined && (
-              <p className="shrink-0 text-[13px] font-semibold tabular-nums text-smoke">
-                {value}/{ch.goal}
-              </p>
-            )}
-          </div>
-          {isJoined && (
-            <div className="mt-3">
-              <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />
-            </div>
-          )}
-        </Link>
-        <div className="mt-3 flex items-center justify-between">
-          <p className="text-[12px] font-medium text-tan-deep">🎁 {ch.reward}</p>
-          {!isJoined && (
-            <form
-              action={async () => {
-                "use server";
-                await joinChallenge(ch.id);
-              }}
-            >
-              <button className="rounded-xl bg-ink px-4 py-2 text-[13px] font-semibold text-white active:scale-95">
-                Join
-              </button>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  };
+  const mine = active.filter((c) => progressOf(c.id) && !progressOf(c.id)?.completedAt);
+  const completed = active.filter((c) => progressOf(c.id)?.completedAt);
+  const available = active.filter((c) => !progressOf(c.id));
 
   return (
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
-      <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-smoke">Push the carriage</p>
-      <h1 className="font-display text-[34px]">Challenges</h1>
+      <header className="rise">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">Challenges</p>
+        <h1 className="mt-1 font-display text-[32px] leading-tight">Pick a goal.<br />Earn the reward.</h1>
+      </header>
 
       {mine.length > 0 && (
-        <>
-          <h2 className="mt-5 text-[13px] font-semibold uppercase tracking-[0.15em] text-smoke">In progress</h2>
-          <div className="mt-2 space-y-3">{mine.map((c) => card(c, true))}</div>
-        </>
+        <section className="rise rise-1 mt-6">
+          <h2 className="font-display text-[20px]">In progress</h2>
+          <div className="mt-3 space-y-3">
+            {mine.map((ch) => {
+              const value = computeProgress(member.id, ch);
+              return (
+                <Link key={ch.id} href={`/challenges/${ch.id}`} className="block rounded-xl2 border border-line bg-white p-4 transition active:scale-[0.99]">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[15px] font-semibold">{ch.emoji} {ch.name}</p>
+                    <p className="text-[13px] font-semibold tabular-nums text-smoke">{value}/{ch.goal}</p>
+                  </div>
+                  <div className="mt-3">
+                    <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-medium">
+                      {ch.rewardEmoji ?? "🎁"} {ch.reward}
+                    </span>
+                    <span className="text-[12px] font-semibold text-tan-deep">{Math.max(0, ch.goal - value)} to go</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
-      {available.length > 0 && (
-        <>
-          <h2 className="mt-6 text-[13px] font-semibold uppercase tracking-[0.15em] text-smoke">Open to join</h2>
-          <div className="mt-2 space-y-3">{available.map((c) => card(c, false))}</div>
-        </>
+
+      <section className="rise rise-2 mt-7">
+        <h2 className="font-display text-[20px]">Open to join</h2>
+        {available.length === 0 ? (
+          <p className="mt-3 rounded-xl2 border border-dashed border-line bg-white p-5 text-center text-[14px] text-smoke">
+            You&apos;re in every active challenge. Impressive.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {available.map((ch) => (
+              <div key={ch.id} className="rounded-xl2 border border-line bg-white p-4">
+                <Link href={`/challenges/${ch.id}`} className="block">
+                  <p className="text-[15px] font-semibold">{ch.emoji} {ch.name}</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-smoke">{ch.description}</p>
+                </Link>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-medium">
+                    <span className="shrink-0">{ch.rewardEmoji ?? "🎁"}</span>
+                    <span className="truncate">{ch.reward}</span>
+                  </span>
+                  <form action={async () => { "use server"; await joinChallenge(ch.id); }}>
+                    <button className="shrink-0 rounded-xl bg-ink px-4 py-2 text-[13px] font-semibold text-white active:scale-95">
+                      Join
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {completed.length > 0 && (
+        <section className="rise rise-3 mt-7 pb-4">
+          <h2 className="font-display text-[20px]">Completed</h2>
+          <div className="mt-3 divide-y divide-line rounded-xl2 border border-line bg-white">
+            {completed.map((ch) => (
+              <Link key={ch.id} href={`/challenges/${ch.id}`} className="flex items-center justify-between px-4 py-3">
+                <p className="text-[14px] font-medium">{ch.emoji} {ch.name}</p>
+                <span className="text-[12px] font-semibold text-spring-green">Done ✓</span>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
     </main>
   );

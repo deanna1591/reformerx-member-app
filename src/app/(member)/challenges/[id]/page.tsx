@@ -19,6 +19,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
     (p) => p.memberId === member.id && p.challengeId === ch.id
   );
   const value = progress ? computeProgress(member.id, ch) : 0;
+  const myReward = db.earnedRewards.find((r) => r.memberId === member.id && r.challengeId === ch.id);
   const board = ch.leaderboard && db.settings.leaderboardsEnabled ? leaderboard(ch.id) : null;
 
   const typeLabel: Record<string, string> = {
@@ -47,12 +48,26 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
             {ch.startDate && fmtDate(ch.startDate)} — {ch.endDate && fmtDate(ch.endDate)}
           </p>
         )}
-        <p className="mt-3 rounded-xl bg-sage-soft px-3 py-2.5 text-[14px] font-medium text-ink">
-          🎁 Reward: {ch.reward}
-        </p>
-        {progress?.completedAt && (
-          <p className="mt-3 rounded-xl bg-spring-green/10 px-3 py-2.5 text-[14px] font-semibold text-spring-green">
-            Completed on {fmtDate(progress.completedAt)} — reward waiting at reception.
+      </section>
+
+      {/* What you earn */}
+      <section className="mt-3 rounded-xl2 border border-line bg-white p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">What you earn</p>
+        <div className="mt-2.5 flex items-center gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-sage-soft text-2xl">{ch.rewardEmoji ?? "🎁"}</span>
+          <div>
+            <p className="text-[15px] font-semibold leading-snug">{ch.reward}</p>
+            <p className="text-[12px] text-smoke">Unlocked the moment you complete the challenge</p>
+          </div>
+        </div>
+        {myReward && (
+          <p className={`mt-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+            myReward.status === "ready" ? "bg-ink text-white" : myReward.status === "collected" ? "bg-chalk text-smoke" : "bg-sage-soft text-ink"
+          }`}>
+            {myReward.status === "ready" && "🎉 Ready — pick it up at reception on your next visit."}
+            {myReward.status === "earned" && "Earned! The studio is preparing it — we'll notify you."}
+            {myReward.status === "collected" && `Collected on ${fmtDate(myReward.decidedAt ?? myReward.earnedAt)}. Enjoy!`}
+            {myReward.status === "declined" && "Please ask at reception about this reward."}
           </p>
         )}
         {!progress && (

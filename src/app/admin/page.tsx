@@ -13,7 +13,8 @@ export default function AdminOverview() {
   const checkinsWeek = db.checkIns.filter((c) => new Date(c.at) >= weekAgo).length;
   const checkinsMonth = db.checkIns.filter((c) => new Date(c.at) >= monthAgo).length;
   const activeMembers = db.members.filter((m) => new Date(m.membershipExpires) >= now).length;
-  const pending = db.redemptions.filter((r) => r.status === "pending").length;
+  const pending = db.earnedRewards.filter((r) => r.status === "earned").length;
+  const awaitingPickup = db.earnedRewards.filter((r) => r.status === "ready").length;
 
   const challengeRows = db.challenges.map((ch) => {
     const parts = db.challengeProgress.filter((p) => p.challengeId === ch.id);
@@ -40,7 +41,7 @@ export default function AdminOverview() {
         {kpi("Check-ins this week", checkinsWeek)}
         {kpi("Check-ins last 30 days", checkinsMonth)}
         {kpi("Active memberships", `${activeMembers}/${db.members.length}`)}
-        {kpi("Pending redemptions", pending)}
+        {kpi("Rewards to prepare", pending, awaitingPickup ? `${awaitingPickup} awaiting pickup` : undefined)}
       </div>
 
       <h2 className="mt-10 font-display text-[22px]">Challenge participation</h2>

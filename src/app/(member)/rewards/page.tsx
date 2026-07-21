@@ -1,67 +1,142 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB } from "@/lib/store";
-import RedeemButton from "@/components/RedeemButton";
-import { fmtDate } from "@/lib/engine";
+import { computeProgress, fmtDate } from "@/lib/engine";
+import CarriageProgress from "@/components/CarriageProgress";
 
 export const dynamic = "force-dynamic";
 
-export default function RewardsPage() {
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  earned: { label: "Being prepared", cls: "bg-sage-soft text-ink" },
+  ready: { label: "Ready at reception", cls: "bg-ink text-white" },
+  collected: { label: "Collected", cls: "bg-chalk text-smoke border border-line" },
+  declined: { label: "See reception", cls: "bg-spring-red/10 text-spring-red" },
+};
+
+export default function Rewards() {
   const member = currentMember();
   if (!member) redirect("/login");
   const db = getDB();
-  const points = db.points[member.id] ?? 0;
-  const myRedemptions = db.redemptions
+
+  const mine = db.earnedRewards
     .filter((r) => r.memberId === member.id)
-    .sort((a, b) => +new Date(b.requestedAt) - +new Date(a.requestedAt))
-    .slice(0, 6);
+    .sort((a, b) => +new Date(b.earnedAt) - +new Date(a.earnedAt));
+  const open = mine.filter((r) => r.status === "earned" || r.status === "ready");
+  const history = mine.filter((r) => r.status === "collected" || r.status === "declined");
+
+  // Rewards still on the table: active challenges joined but not completed
+  const inPlay = db.challengeProgress
+    .filter((p) => p.memberId === member.id && !p.completedAt)
+    .map((p) => db.challenges.find((c) => c.id === p.challengeId)!)
+    .filter((ch) => ch && ch.active)
+    .map((ch) => ({ ch, value: computeProgress(member.id, ch) }))
+    .sort((a, b) => b.value / b.ch.goal - a.value / a.ch.goal);
 
   return (
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
-      <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-smoke">Earn 10 pts per class</p>
-      <h1 className="font-display text-[34px]">Rewards</h1>
+      <header className="rise">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">Rewards</p>
+        <h1 className="mt-1 font-display text-[32px] leading-tight">Finish challenges, earn rewards</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-smoke">
+          Every challenge has a reward attached. Complete it and the studio prepares your reward for pickup — no points, no catalog.
+        </p>
+      </header>
 
-      <div className="mt-4 rounded-xl2 bg-ink p-5 text-white shadow-lift">
-        <p className="text-[13px] uppercase tracking-[0.15em] text-white/60">Your balance</p>
-        <p className="font-display text-[40px] tabular-nums">{points} <span className="text-[20px] text-white/60">pts</span></p>
-      </div>
-
-      <div className="mt-5 space-y-3">
-        {db.rewards.filter((r) => r.available).map((r) => (
-          <div key={r.id} className="flex items-center justify-between rounded-xl2 bg-card p-4 shadow-card">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-sage-soft text-xl">{r.emoji}</span>
-              <p className="text-[15px] font-semibold">{r.name}</p>
-            </div>
-            <RedeemButton rewardId={r.id} cost={r.cost} canAfford={points >= r.cost} />
-          </div>
-        ))}
-      </div>
-
-      {myRedemptions.length > 0 && (
-        <section className="mt-7">
-          <h2 className="font-display text-[22px]">Your requests</h2>
-          <ul className="mt-3 space-y-2">
-            {myRedemptions.map((rd) => {
-              const reward = db.rewards.find((r) => r.id === rd.rewardId);
-              const label = reward ? `${reward.emoji} ${reward.name}` : rd.note;
-              const badge =
-                rd.status === "approved"
-                  ? "bg-spring-green/15 text-spring-green"
-                  : rd.status === "rejected"
-                  ? "bg-spring-red/15 text-spring-red"
-                  : "bg-spring-yellow/15 text-spring-yellow";
-              return (
-                <li key={rd.id} className="flex items-center justify-between rounded-xl bg-card px-4 py-3 shadow-card">
-                  <div>
-                    <p className="text-[14px] font-medium">{label}</p>
-                    <p className="text-[12px] text-smoke">{fmtDate(rd.requestedAt)}</p>
+      {open.length > 0 && (
+        <section className="rise rise-1 mt-6">
+          <h2 className="font-display text-[20px]">Your rewards</h2>
+          <div className="mt-3 space-y-3">
+            {open.map((r) => (
+              <div key={r.id} className="rounded-xl2 border border-line bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-sage-soft text-2xl">{r.rewardEmoji}</span>
+                    <div>
+                      <p className="text-[15px] font-semibold leading-snug">{r.reward}</p>
+                      <p className="mt-0.5 text-[12px] text-smoke">
+                        {r.challengeName} · {fmtDate(r.earnedAt)}
+                      </p>
+                    </div>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${badge}`}>{rd.status}</span>
-                </li>
-              );
-            })}
-          </ul>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_META[r.status].cls}`}>
+                    {STATUS_META[r.status].label}
+                  </span>
+                </div>
+                {r.status === "ready" && (
+                  <p className="mt-3 rounded-xl bg-chalk px-3 py-2.5 text-[13px] text-ink">
+                    Show this screen at reception on your next visit. 🎉
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="rise rise-2 mt-7">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-[20px]">On the table</h2>
+          <Link href="/challenges" className="text-[13px] font-semibold text-tan-deep">
+            All challenges →
+          </Link>
+        </div>
+        {inPlay.length === 0 ? (
+          <div className="mt-3 rounded-xl2 border border-dashed border-line bg-white p-6 text-center">
+            <p className="text-3xl">🎯</p>
+            <p className="mt-2 text-[14px] text-smoke">
+              Join a challenge to put a reward on the table.
+            </p>
+            <Link href="/challenges" className="mt-4 inline-block rounded-xl bg-ink px-5 py-2.5 text-[14px] font-semibold text-white">
+              Browse challenges
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {inPlay.map(({ ch, value }) => (
+              <Link key={ch.id} href={`/challenges/${ch.id}`} className="block rounded-xl2 border border-line bg-white p-4 transition active:scale-[0.99]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-chalk text-2xl">{ch.rewardEmoji ?? "🎁"}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-semibold">{ch.reward}</p>
+                      <p className="truncate text-[12px] text-smoke">
+                        {ch.emoji} {ch.name}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[13px] font-semibold text-tan-deep">
+                    {Math.max(0, ch.goal - value)} to go
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {history.length > 0 && (
+        <section className="rise rise-3 mt-7 pb-4">
+          <h2 className="font-display text-[20px]">History</h2>
+          <div className="mt-3 divide-y divide-line rounded-xl2 border border-line bg-white">
+            {history.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="text-xl">{r.rewardEmoji}</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-medium">{r.reward}</p>
+                    <p className="truncate text-[12px] text-smoke">{fmtDate(r.decidedAt ?? r.earnedAt)}</p>
+                  </div>
+                </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_META[r.status].cls}`}>
+                  {STATUS_META[r.status].label}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </main>

@@ -1,6 +1,6 @@
 # ReformerX Member App
 
-A gamified member app for the ReformerX Pilates studio (Prague 1): QR check-ins at the studio entrance, challenges, badges, points, rewards, and a desktop admin dashboard — while SimplyBook keeps handling memberships and payments during Phase 1.
+A gamified member app for the ReformerX Pilates studio (Prague 1): QR check-ins at the studio entrance, challenges, badges, challenge rewards, and a desktop admin dashboard — while SimplyBook keeps handling memberships and payments during Phase 1.
 
 Built as a **PWA**: members install it straight from the browser ("Add to Home Screen") — no App Store or Google Play needed. It gets its own icon, runs full-screen, and can use the camera for QR scanning.
 
@@ -25,9 +25,9 @@ npm run dev
 ### Try the full loop
 1. Sign in as Petra → Home shows membership pass + next class.
 2. Tap the big **QR button** → scan the studio QR (open **/admin/studio-qr** on another screen), or type `RX-STUDIO-CHECKIN`.
-3. Check-in validates: active membership → booked class → ±30 min window → not already checked in. Then challenge progress moves, points are added, badges can pop.
+3. Check-in validates: active membership → booked class → ±30 min window → not already checked in. Then challenge progress moves, badges can pop — and completing a challenge unlocks its reward, which appears in the studio's fulfillment queue.
 4. In **Admin → Challenges**, publish a new challenge — every member gets a notification instantly.
-5. In **Rewards**, redeem grip socks → approve it in **Admin → Redemptions**.
+5. Petra's demo check-in completes **10 Classes in 30 Days** live — the reward (grip socks) is unlocked on screen and lands in **Admin → Rewards** for fulfillment: Mark ready → member is notified → Mark collected at handover.
 
 ## What's enforced at check-in (anti-cheat)
 
@@ -45,7 +45,7 @@ SimplyBook (memberships + payments + bookings via widget)
               Next.js app (this repo)
    ┌───────────────────────────────────────────────┐
    │  Check-in engine · Challenge engine · Badges  │
-   │  Points & rewards · Notifications             │
+   │  Challenge rewards · Notifications            │
    └──────────────┬────────────────┬───────────────┘
                   ▼                ▼
         Member PWA (mobile)   Admin dashboard (desktop)

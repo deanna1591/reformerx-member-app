@@ -56,6 +56,7 @@ export interface Challenge {
   startDate?: string; // ISO date, class_count only
   endDate?: string;
   reward: string;
+  rewardEmoji?: string;
   springColor: "red" | "blue" | "yellow" | "green";
   leaderboard: boolean;
   active: boolean;
@@ -83,21 +84,19 @@ export interface EarnedBadge {
   earnedAt: string;
 }
 
-export interface RewardItem {
-  id: string;
-  name: string;
-  emoji: string;
-  cost: number; // points
-  available: boolean;
-}
-
-export interface Redemption {
+/** A reward earned by completing a challenge. Lifecycle:
+ *  earned (auto-created on completion) -> ready (studio confirmed, pick up at reception)
+ *  -> collected (handed over) | declined (edge cases) */
+export interface EarnedReward {
   id: string;
   memberId: string;
-  rewardId: string;
-  requestedAt: string;
-  status: "pending" | "approved" | "rejected";
-  note?: string; // e.g. challenge completion grant
+  challengeId: string;
+  challengeName: string; // snapshot so history survives challenge edits
+  reward: string; // snapshot
+  rewardEmoji: string;
+  earnedAt: string;
+  status: "earned" | "ready" | "collected" | "declined";
+  decidedAt?: string;
 }
 
 export interface AppNotification {
@@ -118,9 +117,7 @@ export interface DB {
   challengeProgress: ChallengeProgress[];
   badgeDefs: BadgeDef[];
   earnedBadges: EarnedBadge[];
-  rewards: RewardItem[];
-  redemptions: Redemption[];
+  earnedRewards: EarnedReward[];
   notifications: AppNotification[];
-  points: Record<string, number>; // memberId -> points
   settings: { leaderboardsEnabled: boolean; studioCode: string; lastSync?: string };
 }

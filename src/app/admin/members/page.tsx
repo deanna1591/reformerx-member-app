@@ -42,7 +42,7 @@ export default function AdminMembers() {
               <th className="px-5 py-3">Membership</th>
               <th className="px-5 py-3">Expires</th>
               <th className="px-5 py-3">Classes</th>
-              <th className="px-5 py-3">Points</th>
+              <th className="px-5 py-3">Rewards</th>
               <th className="px-5 py-3">Status</th>
             </tr>
           </thead>
@@ -59,7 +59,7 @@ export default function AdminMembers() {
                   <td className="px-5 py-3">{m.membershipType}</td>
                   <td className="px-5 py-3 tabular-nums">{fmtDate(m.membershipExpires)}</td>
                   <td className="px-5 py-3 tabular-nums">{stats.total}</td>
-                  <td className="px-5 py-3 tabular-nums">{stats.points}</td>
+                  <td className="px-5 py-3 tabular-nums">{stats.rewardsCollected}</td>
                   <td className="px-5 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${active ? "bg-spring-green/15 text-spring-green" : "bg-spring-red/15 text-spring-red"}`}>
                       {active ? "Active" : "Expired"}

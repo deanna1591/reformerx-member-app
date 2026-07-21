@@ -123,6 +123,18 @@ function seed(): DB {
     }
   };
   attend("m-you", 3, 0); // ~10 visits last month
+  // Extra visits for the demo member inside the 10-in-30 window (days -14..-11)
+  // so today's demo check-in is the 10th — the challenge completes live in the demo.
+  for (const d of [-14, -13, -12, -11, -10]) {
+    const evening = classes.find((c) => {
+      const cd = new Date(c.startsAt);
+      return cd.toDateString() === daysFromNow(d, 0).toDateString() && cd.getHours() >= 17;
+    });
+    if (evening && !checkIns.some((ci) => ci.memberId === "m-you" && ci.classId === evening.id)) {
+      bookings.push({ id: `b-${++bid}`, memberId: "m-you", classId: evening.id, source: "wordpress" });
+      checkIns.push({ id: `ci-x${bid}`, memberId: "m-you", classId: evening.id, at: evening.startsAt });
+    }
+  }
   attend("m-jana", 2, 1); // ~15 visits
   attend("m-tomas", 5, 2); // ~6 visits
 
@@ -151,6 +163,7 @@ function seed(): DB {
         startDate: iso(daysFromNow(-15)),
         endDate: iso(daysFromNow(15)),
         reward: "Free grip socks",
+        rewardEmoji: "🧦",
         springColor: "red",
         leaderboard: false,
         active: true,
@@ -163,6 +176,7 @@ function seed(): DB {
         type: "streak_days",
         goal: 7,
         reward: "Free class credit",
+        rewardEmoji: "🤸",
         springColor: "yellow",
         leaderboard: false,
         active: true,
@@ -177,6 +191,7 @@ function seed(): DB {
         startDate: iso(summerStart),
         endDate: iso(summerEnd),
         reward: "1 month Unlimited (leaderboard winner)",
+        rewardEmoji: "👑",
         springColor: "blue",
         leaderboard: true,
         active: true,
@@ -189,6 +204,7 @@ function seed(): DB {
         type: "lifetime_count",
         goal: 100,
         reward: "Exclusive RX tote + member event invite",
+        rewardEmoji: "👜",
         springColor: "green",
         leaderboard: false,
         active: true,
@@ -201,6 +217,7 @@ function seed(): DB {
         type: "instructor_variety",
         goal: 8,
         reward: "Coffee & smoothie voucher",
+        rewardEmoji: "☕",
         springColor: "blue",
         leaderboard: false,
         active: true,
@@ -209,7 +226,7 @@ function seed(): DB {
     challengeProgress: [
       { memberId: "m-you", challengeId: "ch-10in30", joinedAt: iso(daysFromNow(-15)), progress: 0 },
       { memberId: "m-you", challengeId: "ch-first100", joinedAt: iso(daysFromNow(-200)), progress: 0 },
-      { memberId: "m-jana", challengeId: "ch-10in30", joinedAt: iso(daysFromNow(-15)), progress: 0 },
+      { memberId: "m-jana", challengeId: "ch-10in30", joinedAt: iso(daysFromNow(-15)), progress: 10, completedAt: iso(daysFromNow(-2)) },
       { memberId: "m-jana", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
       { memberId: "m-you", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
     ],
@@ -229,19 +246,20 @@ function seed(): DB {
       { memberId: "m-jana", badgeId: "bd-first", earnedAt: iso(daysFromNow(-419)) },
       { memberId: "m-jana", badgeId: "bd-year", earnedAt: iso(daysFromNow(-55)) },
     ],
-    rewards: [
-      { id: "r-socks", name: "Grip socks", emoji: "🧦", cost: 80, available: true },
-      { id: "r-coffee", name: "Coffee voucher", emoji: "☕", cost: 30, available: true },
-      { id: "r-smoothie", name: "Protein smoothie", emoji: "🥤", cost: 40, available: true },
-      { id: "r-guest", name: "Guest pass", emoji: "🎟️", cost: 120, available: true },
-      { id: "r-class", name: "Free class credit", emoji: "🤸", cost: 150, available: true },
-      { id: "r-merch", name: "10% off merchandise", emoji: "👕", cost: 60, available: true },
-    ],
-    redemptions: [
-      { id: "rd-1", memberId: "m-jana", rewardId: "r-coffee", requestedAt: iso(daysFromNow(-1)), status: "pending" },
+    earnedRewards: [
+      {
+        id: "er-1",
+        memberId: "m-jana",
+        challengeId: "ch-10in30",
+        challengeName: "10 Classes in 30 Days",
+        reward: "Free grip socks",
+        rewardEmoji: "🧦",
+        earnedAt: iso(daysFromNow(-2)),
+        status: "ready",
+        decidedAt: iso(daysFromNow(-1)),
+      },
     ],
     notifications: [],
-    points: { "m-you": 110, "m-jana": 160, "m-tomas": 45, "m-eliska": 20 },
     settings: { leaderboardsEnabled: true, studioCode: "RX-STUDIO-CHECKIN" },
   };
   return db;

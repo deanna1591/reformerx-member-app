@@ -13,8 +13,7 @@ create table members (
   membership_expires timestamptz,
   joined_at timestamptz not null default now(),
   qr_code text not null unique default ('RXM-' || upper(substr(uuid_generate_v4()::text, 1, 8))),
-  simplybook_id text unique,
-  points int not null default 0
+  simplybook_id text unique
 );
 
 create table instructors (
@@ -90,21 +89,19 @@ create table earned_badges (
   primary key (member_id, badge_id)
 );
 
-create table rewards (
-  id uuid primary key default uuid_generate_v4(),
-  name text not null,
-  emoji text,
-  cost int not null,
-  available boolean not null default true
-);
-
-create table redemptions (
+-- Rewards are attached to challenges (challenges.reward). Completing a challenge
+-- creates a row here; staff move it through the fulfillment lifecycle.
+create table earned_rewards (
   id uuid primary key default uuid_generate_v4(),
   member_id uuid not null references members(id) on delete cascade,
-  reward_id uuid references rewards(id),
-  note text,
-  requested_at timestamptz not null default now(),
-  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected'))
+  challenge_id uuid not null references challenges(id),
+  challenge_name text not null, -- snapshot
+  reward text not null,         -- snapshot
+  reward_emoji text not null default '🎁',
+  earned_at timestamptz not null default now(),
+  status text not null default 'earned' check (status in ('earned', 'ready', 'collected', 'declined')),
+  decided_at timestamptz,
+  unique (member_id, challenge_id) -- one reward per challenge per member
 );
 
 create table notifications (
@@ -166,7 +163,6 @@ begin
   end if;
 
   insert into check_ins (member_id, class_id) values (v_member.id, v_class.id);
-  update members set points = points + 10 where id = v_member.id;
 
   -- Challenge/badge evaluation runs in the evaluate_progress trigger below.
   return jsonb_build_object('ok', true, 'message', 'Checked in to ' || v_class.title, 'class', v_class.title);
@@ -180,7 +176,7 @@ alter table check_ins enable row level security;
 alter table bookings enable row level security;
 alter table challenge_progress enable row level security;
 alter table earned_badges enable row level security;
-alter table redemptions enable row level security;
+alter table earned_rewards enable row level security;
 alter table notifications enable row level security;
 
 create policy "own profile" on members for select using (auth.uid() = id);
@@ -188,17 +184,15 @@ create policy "own check-ins" on check_ins for select using (auth.uid() = member
 create policy "own bookings" on bookings for select using (auth.uid() = member_id);
 create policy "own progress" on challenge_progress for all using (auth.uid() = member_id);
 create policy "own badges" on earned_badges for select using (auth.uid() = member_id);
-create policy "own redemptions" on redemptions for all using (auth.uid() = member_id);
+create policy "own earned rewards" on earned_rewards for select using (auth.uid() = member_id);
 create policy "own notifications" on notifications for all using (auth.uid() = member_id);
 
 -- Public read for catalog tables
 alter table challenges enable row level security;
-alter table rewards enable row level security;
 alter table badge_defs enable row level security;
 alter table classes enable row level security;
 alter table instructors enable row level security;
 create policy "read challenges" on challenges for select using (true);
-create policy "read rewards" on rewards for select using (true);
 create policy "read badges" on badge_defs for select using (true);
 create policy "read classes" on classes for select using (true);
 create policy "read instructors" on instructors for select using (true);

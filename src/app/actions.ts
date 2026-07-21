@@ -41,7 +41,7 @@ export async function adminLogout() {
 export async function checkInAction(code: string): Promise<CheckInResult> {
   const memberId = cookies().get("rx_member")?.value;
   if (!memberId)
-    return { ok: false, message: "Please sign in first.", completedChallenges: [], newBadges: [], pointsEarned: 0 };
+    return { ok: false, message: "Please sign in first.", completedChallenges: [], earnedRewards: [], newBadges: [] };
   const result = performCheckIn(memberId, code);
   revalidatePath("/");
   revalidatePath("/challenges");
@@ -68,28 +68,6 @@ export async function joinChallenge(challengeId: string) {
     saveDB();
   }
   revalidatePath("/challenges");
-}
-
-export async function redeemReward(rewardId: string) {
-  const memberId = cookies().get("rx_member")?.value;
-  if (!memberId) return { ok: false, message: "Please sign in." };
-  const db = getDB();
-  const reward = db.rewards.find((r) => r.id === rewardId);
-  if (!reward || !reward.available) return { ok: false, message: "Reward unavailable." };
-  const pts = db.points[memberId] ?? 0;
-  if (pts < reward.cost) return { ok: false, message: "Not enough points yet — keep checking in!" };
-  db.points[memberId] = pts - reward.cost;
-  db.redemptions.push({
-    id: `rd-${Date.now()}`,
-    memberId,
-    rewardId,
-    requestedAt: new Date().toISOString(),
-    status: "pending",
-  });
-  notify(memberId, `Redemption requested: ${reward.emoji} ${reward.name}. Pick it up at reception once approved.`);
-  saveDB();
-  revalidatePath("/rewards");
-  return { ok: true, message: `${reward.name} requested — awaiting studio approval.` };
 }
 
 export async function markNotificationsRead() {
@@ -143,22 +121,22 @@ export async function toggleChallenge(challengeId: string) {
   revalidatePath("/admin/challenges");
 }
 
-export async function decideRedemption(redemptionId: string, decision: "approved" | "rejected") {
+export async function setRewardStatus(rewardId: string, status: "ready" | "collected" | "declined") {
   requireAdmin();
   const db = getDB();
-  const rd = db.redemptions.find((r) => r.id === redemptionId);
-  if (!rd) return;
-  rd.status = decision;
-  const reward = db.rewards.find((r) => r.id === rd.rewardId);
-  const label = reward ? `${reward.emoji} ${reward.name}` : rd.note ?? "your reward";
-  notify(
-    rd.memberId,
-    decision === "approved"
-      ? `✅ Approved: ${label}. Show this at reception to collect it.`
-      : `Your redemption of ${label} was declined — ask at reception for details.`
-  );
+  const er = db.earnedRewards.find((r) => r.id === rewardId);
+  if (!er) return;
+  er.status = status;
+  er.decidedAt = new Date().toISOString();
+  const label = `${er.rewardEmoji} ${er.reward}`;
+  if (status === "ready")
+    notify(er.memberId, `🎁 Your reward is ready: ${label}. Pick it up at reception on your next visit.`);
+  if (status === "collected") notify(er.memberId, `Enjoy your ${er.reward}! Thanks for crushing ${er.challengeName}.`);
+  if (status === "declined")
+    notify(er.memberId, `About your ${er.challengeName} reward — please ask at reception for details.`);
   saveDB();
   revalidatePath("/admin/redemptions");
+  revalidatePath("/rewards");
 }
 
 export async function sendAnnouncement(formData: FormData) {

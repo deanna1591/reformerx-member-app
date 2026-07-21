@@ -8,8 +8,9 @@ export interface CheckInResult {
   message: string;
   className?: string;
   completedChallenges: string[];
+  /** rewards unlocked by completions in this check-in, e.g. "🧦 Free grip socks" */
+  earnedRewards: string[];
   newBadges: string[];
-  pointsEarned: number;
 }
 
 export function membershipActive(m: Member): boolean {
@@ -24,8 +25,8 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
     ok: false,
     message,
     completedChallenges: [],
+    earnedRewards: [],
     newBadges: [],
-    pointsEarned: 0,
   });
 
   const member = db.members.find((m) => m.id === memberId);
@@ -68,12 +69,9 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
   };
   db.checkIns.push(checkIn);
 
-  // Points: 10 per class
-  db.points[memberId] = (db.points[memberId] ?? 0) + 10;
-  let pointsEarned = 10;
-
-  // Recompute challenges
+  // Recompute challenges — completing one unlocks its reward
   const completedChallenges: string[] = [];
+  const earnedRewards: string[] = [];
   for (const cp of db.challengeProgress.filter((p) => p.memberId === memberId && !p.completedAt)) {
     const ch = db.challenges.find((c) => c.id === cp.challengeId);
     if (!ch || !ch.active) continue;
@@ -81,17 +79,19 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
     if (cp.progress >= ch.goal) {
       cp.completedAt = new Date().toISOString();
       completedChallenges.push(`${ch.emoji} ${ch.name}`);
-      db.points[memberId] += 50;
-      pointsEarned += 50;
-      db.redemptions.push({
-        id: `rd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      const emoji = ch.rewardEmoji ?? "🎁";
+      earnedRewards.push(`${emoji} ${ch.reward}`);
+      db.earnedRewards.unshift({
+        id: `er-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         memberId,
-        rewardId: "",
-        requestedAt: new Date().toISOString(),
-        status: "pending",
-        note: `Challenge reward: ${ch.name} → ${ch.reward}`,
+        challengeId: ch.id,
+        challengeName: ch.name,
+        reward: ch.reward,
+        rewardEmoji: emoji,
+        earnedAt: new Date().toISOString(),
+        status: "earned",
       });
-      notify(memberId, `🎉 Challenge complete: ${ch.name}! Reward: ${ch.reward} — pick it up at reception once approved.`);
+      notify(memberId, `🎉 ${ch.name} complete! Your reward — ${ch.reward} — is being prepared. We'll let you know when it's ready at reception.`);
     }
   }
 
@@ -106,8 +106,8 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
     message: `Checked in to ${candidate.title}. Have a great class!`,
     className: candidate.title,
     completedChallenges,
+    earnedRewards,
     newBadges,
-    pointsEarned,
   };
 }
 
@@ -242,7 +242,7 @@ export function memberStats(memberId: string) {
     favTime: favHour !== undefined ? `${favHour}:00` : "—",
     streak: currentStreak(memberId),
     thisMonth,
-    points: getDB().points[memberId] ?? 0,
+    rewardsCollected: db.earnedRewards.filter((r) => r.memberId === memberId && r.status === "collected").length,
   };
 }
 
