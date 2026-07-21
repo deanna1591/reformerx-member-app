@@ -1,0 +1,218 @@
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { getDB, saveDB, resetDB } from "@/lib/store";
+import { performCheckIn, notify, CheckInResult } from "@/lib/engine";
+import { Challenge } from "@/lib/types";
+
+/* ---------- auth ---------- */
+
+export async function memberLogin(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const db = getDB();
+  const member = db.members.find((m) => m.email.toLowerCase() === email);
+  if (!member) redirect("/login?error=1");
+  cookies().set("rx_member", member!.id, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 90 });
+  redirect("/");
+}
+
+export async function memberLogout() {
+  cookies().delete("rx_member");
+  redirect("/login");
+}
+
+export async function adminLogin(formData: FormData) {
+  const password = String(formData.get("password") ?? "");
+  const expected = process.env.ADMIN_PASSWORD ?? "reformerx";
+  if (password !== expected) redirect("/admin/login?error=1");
+  cookies().set("rx_admin", "1", { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 12 });
+  redirect("/admin");
+}
+
+export async function adminLogout() {
+  cookies().delete("rx_admin");
+  redirect("/admin/login");
+}
+
+/* ---------- member actions ---------- */
+
+export async function checkInAction(code: string): Promise<CheckInResult> {
+  const memberId = cookies().get("rx_member")?.value;
+  if (!memberId)
+    return { ok: false, message: "Please sign in first.", completedChallenges: [], newBadges: [], pointsEarned: 0 };
+  const result = performCheckIn(memberId, code);
+  revalidatePath("/");
+  revalidatePath("/challenges");
+  revalidatePath("/profile");
+  return result;
+}
+
+export async function joinChallenge(challengeId: string) {
+  const memberId = cookies().get("rx_member")?.value;
+  if (!memberId) return;
+  const db = getDB();
+  const exists = db.challengeProgress.some(
+    (p) => p.memberId === memberId && p.challengeId === challengeId
+  );
+  if (!exists) {
+    db.challengeProgress.push({
+      memberId,
+      challengeId,
+      joinedAt: new Date().toISOString(),
+      progress: 0,
+    });
+    const ch = db.challenges.find((c) => c.id === challengeId);
+    if (ch) notify(memberId, `You joined ${ch.emoji} ${ch.name}. Good luck!`);
+    saveDB();
+  }
+  revalidatePath("/challenges");
+}
+
+export async function redeemReward(rewardId: string) {
+  const memberId = cookies().get("rx_member")?.value;
+  if (!memberId) return { ok: false, message: "Please sign in." };
+  const db = getDB();
+  const reward = db.rewards.find((r) => r.id === rewardId);
+  if (!reward || !reward.available) return { ok: false, message: "Reward unavailable." };
+  const pts = db.points[memberId] ?? 0;
+  if (pts < reward.cost) return { ok: false, message: "Not enough points yet — keep checking in!" };
+  db.points[memberId] = pts - reward.cost;
+  db.redemptions.push({
+    id: `rd-${Date.now()}`,
+    memberId,
+    rewardId,
+    requestedAt: new Date().toISOString(),
+    status: "pending",
+  });
+  notify(memberId, `Redemption requested: ${reward.emoji} ${reward.name}. Pick it up at reception once approved.`);
+  saveDB();
+  revalidatePath("/rewards");
+  return { ok: true, message: `${reward.name} requested — awaiting studio approval.` };
+}
+
+export async function markNotificationsRead() {
+  const memberId = cookies().get("rx_member")?.value;
+  if (!memberId) return;
+  const db = getDB();
+  db.notifications.forEach((n) => {
+    if (n.memberId === memberId) n.read = true;
+  });
+  saveDB();
+  revalidatePath("/");
+}
+
+/* ---------- admin actions ---------- */
+
+function requireAdmin() {
+  if (cookies().get("rx_admin")?.value !== "1") redirect("/admin/login");
+}
+
+export async function createChallenge(formData: FormData) {
+  requireAdmin();
+  const db = getDB();
+  const ch: Challenge = {
+    id: `ch-${Date.now()}`,
+    name: String(formData.get("name") ?? "New challenge"),
+    emoji: String(formData.get("emoji") || "🏆"),
+    description: String(formData.get("description") ?? ""),
+    type: (formData.get("type") as Challenge["type"]) ?? "class_count",
+    goal: Number(formData.get("goal") ?? 10),
+    startDate: formData.get("startDate") ? new Date(String(formData.get("startDate"))).toISOString() : undefined,
+    endDate: formData.get("endDate") ? new Date(String(formData.get("endDate"))).toISOString() : undefined,
+    reward: String(formData.get("reward") ?? ""),
+    springColor: (formData.get("springColor") as Challenge["springColor"]) ?? "red",
+    leaderboard: formData.get("leaderboard") === "on",
+    active: true,
+  };
+  db.challenges.unshift(ch);
+  // announce to all members
+  db.members.forEach((m) => notify(m.id, `New challenge at the studio: ${ch.emoji} ${ch.name} — reward: ${ch.reward}`));
+  saveDB();
+  revalidatePath("/admin/challenges");
+  revalidatePath("/challenges");
+}
+
+export async function toggleChallenge(challengeId: string) {
+  requireAdmin();
+  const db = getDB();
+  const ch = db.challenges.find((c) => c.id === challengeId);
+  if (ch) ch.active = !ch.active;
+  saveDB();
+  revalidatePath("/admin/challenges");
+}
+
+export async function decideRedemption(redemptionId: string, decision: "approved" | "rejected") {
+  requireAdmin();
+  const db = getDB();
+  const rd = db.redemptions.find((r) => r.id === redemptionId);
+  if (!rd) return;
+  rd.status = decision;
+  const reward = db.rewards.find((r) => r.id === rd.rewardId);
+  const label = reward ? `${reward.emoji} ${reward.name}` : rd.note ?? "your reward";
+  notify(
+    rd.memberId,
+    decision === "approved"
+      ? `✅ Approved: ${label}. Show this at reception to collect it.`
+      : `Your redemption of ${label} was declined — ask at reception for details.`
+  );
+  saveDB();
+  revalidatePath("/admin/redemptions");
+}
+
+export async function sendAnnouncement(formData: FormData) {
+  requireAdmin();
+  const text = String(formData.get("text") ?? "").trim();
+  if (!text) return;
+  const db = getDB();
+  db.members.forEach((m) => notify(m.id, `📣 ${text}`));
+  saveDB();
+  revalidatePath("/admin");
+}
+
+export async function toggleLeaderboards() {
+  requireAdmin();
+  const db = getDB();
+  db.settings.leaderboardsEnabled = !db.settings.leaderboardsEnabled;
+  saveDB();
+  revalidatePath("/admin/settings");
+}
+
+export async function simulateSimplybookSync() {
+  requireAdmin();
+  const { simplybookConfigured, syncFromSimplybook } = await import("@/lib/simplybook");
+  const db = getDB();
+
+  if (simplybookConfigured()) {
+    // Real sync against the SimplyBook REST v2 admin API.
+    try {
+      const result = await syncFromSimplybook();
+      getDB().settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message}`;
+      saveDB();
+    } catch (e) {
+      db.settings.lastSync = `${new Date().toISOString()}|err|${e instanceof Error ? e.message : "Sync failed"}`;
+      saveDB();
+    }
+  } else {
+    // Demo mode: refresh expirations so the demo stays usable.
+    db.members.forEach((m) => {
+      if (m.id !== "m-eliska") {
+        const d = new Date(m.membershipExpires);
+        if (d.getTime() < Date.now()) {
+          d.setDate(d.getDate() + 30);
+          m.membershipExpires = d.toISOString();
+        }
+      }
+    });
+    db.settings.lastSync = `${new Date().toISOString()}|demo|Demo mode — set SIMPLYBOOK_COMPANY, SIMPLYBOOK_LOGIN and SIMPLYBOOK_USER_KEY in .env.local to sync real data.`;
+    saveDB();
+  }
+  revalidatePath("/admin/members");
+}
+
+export async function resetDemoData() {
+  requireAdmin();
+  resetDB();
+  revalidatePath("/", "layout");
+}
