@@ -199,12 +199,22 @@ interface SbPackageInstance {
   package?: { id?: number; name?: string };
 }
 
+interface SbInvoiceLine {
+  type?: string; // "booking" | "package" | "membership" | ...
+  name?: string;
+  object_name?: string;
+  description_string?: string; // e.g. "Balíček: Monthly Unlimited (21-07-2026 - 20-08-2026) x1 4900.00 CZK"
+  period_start?: string;
+  package_id?: number;
+}
+
 interface SbInvoice {
   id: number | string;
   client_id?: number | string;
   datetime?: string;
   payment_received?: boolean;
-  status?: string;
+  status?: string; // "paid" | "cancelled" | "cancelled_by_timeout" | ...
+  lines?: SbInvoiceLine[];
   package_instances?: SbPackageInstance[];
 }
 
@@ -435,42 +445,50 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     if (rpcOk) membershipSource = `JSON-RPC (${list.length} clients checked)`;
   }
 
-  /* 3.5 — Passes sold as SimplyBook Packages: paid invoices embed package
-     instances with validity windows and the product name. This is how studios
-     that don't use the Membership feature (like this one) sell passes. */
+  /* 3.5 — Passes sold as SimplyBook Packages. Verified on this account:
+     purchases appear as PAID invoice lines with type "package", carrying the
+     product name and validity window in description_string, e.g.
+     "Balíček: Monthly Unlimited (21-07-2026 - 20-08-2026) x1 4900.00 CZK".
+     (package_instances stays empty on this account — don't rely on it.)
+     Default window: 60 days per sync (fast, catches new purchases).
+     Set SIMPLYBOOK_SCAN_INVOICES=1 once for a 400-day backfill. */
   let packagePasses = 0;
-  // Verified on this account: passes are not sold via SimplyBook Packages either
-  // (full invoice scan found zero package instances). The scan costs ~2 minutes,
-  // so it's opt-in: set SIMPLYBOOK_SCAN_INVOICES=1 to re-enable if the studio
-  // ever starts selling passes through SimplyBook.
-  if (membershipRows === 0 && process.env.SIMPLYBOOK_SCAN_INVOICES === "1") {
+  if (membershipRows === 0) {
     try {
-      const invFrom = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
+      const backfill = process.env.SIMPLYBOOK_SCAN_INVOICES === "1";
+      const invDays = backfill ? 400 : 60;
+      const invFrom = new Date(Date.now() - invDays * 86400000).toISOString().slice(0, 10);
       const invoices = await sbAll<SbInvoice>(
         `/admin/invoices?filter[datetime_from]=${invFrom}`,
-        30
+        backfill ? 60 : 12
       );
+      const period = /\((\d{2})-(\d{2})-(\d{4})\s*-\s*(\d{2})-(\d{2})-(\d{4})\)/;
+      const namePrefix = /^[^:]{0,30}:\s*(.+?)\s*\(/;
       for (const inv of invoices) {
-        if (inv.payment_received === false) continue;
-        if ((inv.status || "").toLowerCase().includes("cancel") || (inv.status || "").toLowerCase().includes("refund")) continue;
-        for (const pi of inv.package_instances ?? []) {
-          const cid = String(pi.client_id ?? inv.client_id ?? "");
+        const paid = inv.status === "paid" || inv.payment_received === true;
+        if (!paid) continue;
+        for (const line of inv.lines ?? []) {
+          if (line.type !== "package" && line.type !== "membership") continue;
+          const cid = String(inv.client_id ?? "");
           const m = db.members.find((x) => x.simplybookId === cid);
-          if (!m || !pi.period_end) continue;
-          if (pi.can_be_used === false || (pi.status || "").toLowerCase().includes("cancel")) continue;
-          const end = new Date(`${String(pi.period_end).slice(0, 10)}T23:59:59`);
-          if (Number.isNaN(end.getTime())) continue;
+          if (!m) continue;
+          const desc = line.description_string ?? "";
+          const pm = period.exec(desc);
+          let end: Date | null = null;
+          if (pm) end = new Date(`${pm[6]}-${pm[5]}-${pm[4]}T23:59:59`);
+          else if (line.period_start) end = new Date(new Date(`${line.period_start}T00:00:00`).getTime() + 31 * 86400000);
+          if (!end || Number.isNaN(end.getTime())) continue;
+          const productName = namePrefix.exec(desc)?.[1] || line.name || line.object_name;
           if (end.getTime() > new Date(m.membershipExpires).getTime()) {
             m.membershipExpires = end.toISOString();
-            m.membershipType = mapMembershipType(pi.package?.name);
+            m.membershipType = mapMembershipType(productName);
           }
           packagePasses++;
         }
       }
-      if (packagePasses > 0) membershipSource = `invoices/packages (${invoices.length} invoices scanned)`;
+      membershipSource = `invoice package lines (${invoices.length} invoices, ${invDays}d window)`;
     } catch (e) {
-      if (membershipSource === "none")
-        membershipSource = `invoice scan error: ${e instanceof Error ? e.message : "failed"}`;
+      membershipSource = `invoice scan error: ${e instanceof Error ? e.message : "failed"}`;
     }
   }
 
@@ -479,7 +497,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
      client with a confirmed recent or upcoming booking IS an active member —
      they could not book otherwise. Grant "Member" status: latest booking + 45 days. */
   let activityMembers = 0;
-  if (membershipRows === 0 && packagePasses === 0) {
+  {
     const latestByClient = new Map<string, number>();
     for (const b of bookings) {
       const rawStart = b.start_datetime ?? b.start_date_time ?? b.start_date;
@@ -499,9 +517,10 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       if (!m) continue;
       const derived = latest + 45 * 86400000;
       if (derived > Date.now() && derived > new Date(m.membershipExpires).getTime()) {
+        const hadRealPass = new Date(m.membershipExpires).getTime() > new Date("2000-01-01").getTime() && m.membershipType !== "Member";
         m.membershipExpires = new Date(derived).toISOString();
         if (new Date(m.joinedAt).getTime() > latest) m.joinedAt = new Date(latest).toISOString();
-        m.membershipType = "Member";
+        if (!hadRealPass) m.membershipType = "Member";
         activityMembers++;
       }
     }

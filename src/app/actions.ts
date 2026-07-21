@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDB, saveDB, resetDB } from "@/lib/store";
 import { performCheckIn, notify, CheckInResult } from "@/lib/engine";
-import { Challenge } from "@/lib/types";
+import { Member, Challenge } from "@/lib/types";
 
 /* ---------- auth ---------- */
 
@@ -170,6 +170,63 @@ export async function setRewardStatus(rewardId: string, status: "ready" | "colle
   revalidatePath("/rewards");
 }
 
+export async function updateMembership(memberId: string, formData: FormData) {
+  requireAdmin();
+  const db = getDB();
+  const m = db.members.find((x) => x.id === memberId);
+  if (!m) return;
+  const type = String(formData.get("type") ?? m.membershipType);
+  const expires = String(formData.get("expires") ?? "");
+  m.membershipType = type as typeof m.membershipType;
+  if (expires) m.membershipExpires = new Date(`${expires}T23:59:59`).toISOString();
+  saveDB();
+  revalidatePath(`/admin/members/${memberId}`);
+  revalidatePath("/admin/members");
+}
+
+export async function extendMembership(memberId: string, days: number) {
+  requireAdmin();
+  const db = getDB();
+  const m = db.members.find((x) => x.id === memberId);
+  if (!m) return;
+  const base = Math.max(Date.now(), new Date(m.membershipExpires).getTime());
+  m.membershipExpires = new Date(base + days * 86400000).toISOString();
+  notify(memberId, `Your membership was extended to ${new Date(m.membershipExpires).toLocaleDateString("en-GB")}. See you on the reformer!`);
+  saveDB();
+  revalidatePath(`/admin/members/${memberId}`);
+  revalidatePath("/admin/members");
+}
+
+export async function sendMemberMessage(memberId: string, formData: FormData) {
+  requireAdmin();
+  const text = String(formData.get("text") ?? "").trim();
+  if (!text) return;
+  notify(memberId, `💬 ${text}`);
+  saveDB();
+  const { sendPush } = await import("@/lib/push");
+  void sendPush(memberId, text);
+  revalidatePath(`/admin/members/${memberId}`);
+}
+
+export async function adminCheckIn(memberId: string, formData: FormData) {
+  requireAdmin();
+  const classId = String(formData.get("classId") ?? "");
+  if (!classId) return;
+  const db = getDB();
+  if (db.checkIns.some((ci) => ci.memberId === memberId && ci.classId === classId)) return;
+  const { recordAttendance } = await import("@/lib/engine");
+  const res = recordAttendance(memberId, classId);
+  const cls = db.classes.find((c) => c.id === classId);
+  notify(memberId, `Front desk checked you in to ${cls?.title ?? "class"}. Enjoy!`);
+  if (res.completedChallenges.length) {
+    const { sendPush } = await import("@/lib/push");
+    void sendPush(memberId, `🎉 ${res.completedChallenges[0]} complete!`, "/rewards");
+  }
+  saveDB();
+  revalidatePath(`/admin/members/${memberId}`);
+  revalidatePath("/admin/members");
+}
+
 export async function sendAnnouncement(formData: FormData) {
   requireAdmin();
   const text = String(formData.get("text") ?? "").trim();
@@ -229,3 +286,5 @@ export async function resetDemoData() {
   resetDB();
   revalidatePath("/", "layout");
 }
+
+/* ---------- admin member management ---------- */

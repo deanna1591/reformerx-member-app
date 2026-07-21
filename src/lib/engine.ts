@@ -60,11 +60,30 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
   const already = db.checkIns.some((ci) => ci.memberId === memberId && ci.classId === candidate.id);
   if (already) return fail(`You're already checked in for ${candidate.title}. Enjoy the class!`);
 
-  // Record attendance
+  // Record attendance + run all game logic
+  const { checkIn, completedChallenges, earnedRewards, newBadges } = recordAttendance(memberId, candidate.id);
+  void checkIn;
+
+  saveDB();
+
+  return {
+    ok: true,
+    message: `Checked in to ${candidate.title}. Have a great class!`,
+    className: candidate.title,
+    completedChallenges,
+    earnedRewards,
+    newBadges,
+  };
+}
+
+/** Insert a check-in and run challenges/badges/rewards. Shared by QR check-in
+ *  and the admin's manual check-in (which bypasses code/window validation). */
+export function recordAttendance(memberId: string, classId: string) {
+  const db = getDB();
   const checkIn: CheckIn = {
     id: `ci-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     memberId,
-    classId: candidate.id,
+    classId,
     at: new Date().toISOString(),
   };
   db.checkIns.push(checkIn);
@@ -99,16 +118,7 @@ export function performCheckIn(memberId: string, scannedCode: string): CheckInRe
   const newBadges = awardBadges(memberId, checkIn);
   for (const b of newBadges) notify(memberId, `New badge earned: ${b}`);
 
-  saveDB();
-
-  return {
-    ok: true,
-    message: `Checked in to ${candidate.title}. Have a great class!`,
-    className: candidate.title,
-    completedChallenges,
-    earnedRewards,
-    newBadges,
-  };
+  return { checkIn, completedChallenges, earnedRewards, newBadges };
 }
 
 export function computeProgress(memberId: string, ch: Challenge): number {
