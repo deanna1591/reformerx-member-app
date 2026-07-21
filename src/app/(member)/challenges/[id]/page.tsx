@@ -38,7 +38,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
       <section className="mt-5 rounded-xl2 bg-card p-5 shadow-card">
         <div className="flex items-baseline justify-between">
           <p className="text-[13px] font-semibold uppercase tracking-[0.15em] text-smoke">{typeLabel[ch.type]}</p>
-          <p className="font-display text-[26px] tabular-nums">{value}<span className="text-smoke">/{ch.goal}</span></p>
+          <p><span className="font-display text-[40px] leading-none tabular-nums">{value}</span><span className="font-display text-[20px] text-smoke">/{ch.goal}</span></p>
         </div>
         <div className="mt-3">
           <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />

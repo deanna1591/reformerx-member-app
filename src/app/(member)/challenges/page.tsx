@@ -24,7 +24,7 @@ export default function ChallengesPage() {
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
       <header className="rise">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">Challenges</p>
-        <h1 className="mt-1 font-display text-[32px] leading-tight">Pick a goal.<br />Earn the reward.</h1>
+        <h1 className="mt-1 font-display text-[34px] leading-[0.98]">Pick a goal.<br />Earn the reward.</h1>
       </header>
 
       {mine.length > 0 && (

@@ -69,23 +69,35 @@ export default function Scanner() {
 
   if (result) {
     return (
-      <div className={`rounded-xl2 border p-6 text-center ${result.ok ? "border-line bg-white" : "border-spring-red/30 bg-spring-red/5"}`}>
-        <p className="text-4xl">{result.ok ? "✅" : "🚫"}</p>
-        <p className="mt-3 text-[16px] font-semibold">{result.message}</p>
+      <div className={`relative overflow-hidden rounded-[22px] p-6 pt-9 text-center ${result.ok ? "bg-ink text-white" : "border border-spring-red/30 bg-spring-red/5"}`}>
+        {result.ok && (
+          <>
+            <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-140px] h-[300px] w-[300px] -translate-x-1/2 rounded-full border border-sage/25" />
+            <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-140px] h-[230px] w-[230px] -translate-x-1/2 rounded-full border border-sage/15" />
+          </>
+        )}
+        {result.ok ? (
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-sage text-[22px] text-ink">✓</span>
+        ) : (
+          <p className="text-4xl">🚫</p>
+        )}
+        <p className={`mt-3 text-[15px] font-semibold ${result.ok ? "text-white" : ""}`}>{result.message}</p>
         {result.completedChallenges.map((c, i) => (
-          <div key={c} className="mt-3 rounded-xl2 bg-ink p-4 text-white">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">Challenge complete</p>
-            <p className="mt-1 font-display text-[20px]">{c}</p>
-            {result.earnedRewards[i] && (
-              <p className="mt-2 rounded-xl bg-sage px-3 py-2 text-[14px] font-semibold text-ink">
-                Reward unlocked: {result.earnedRewards[i]}
-              </p>
-            )}
-            <p className="mt-2 text-[12px] text-white/60">We&apos;ll let you know when it&apos;s ready at reception.</p>
+          <div key={c} className="mt-4 overflow-hidden rounded-[18px] bg-chalk text-left text-ink">
+            <div className="flex items-center gap-3 p-4">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-ink text-[20px]">{(result.earnedRewards[i] ?? "🎁").split(" ")[0]}</span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-tan-deep">Challenge complete · reward unlocked</p>
+                <p className="truncate font-display text-[17px]">{c.replace(/^\S+\s/, "")}</p>
+                {result.earnedRewards[i] && <p className="text-[12px] font-semibold">{result.earnedRewards[i]}</p>}
+              </div>
+            </div>
+            <div className="mx-3 border-t-2 border-dashed border-[#C9C6B8]" />
+            <p className="px-4 py-2.5 text-[11.5px] text-[#55533F]">The studio is preparing it — you&apos;ll get a ping when it&apos;s at reception.</p>
           </div>
         ))}
         {result.newBadges.map((b) => (
-          <p key={b} className="mt-2 rounded-xl border border-line bg-chalk px-3 py-2 text-[14px] font-semibold">
+          <p key={b} className={`mt-2 rounded-full px-3 py-2 text-[13px] font-semibold ${result.ok ? "bg-white/10 text-sage" : "border border-line bg-chalk"}`}>
             New badge: {b}
           </p>
         ))}
@@ -93,7 +105,7 @@ export default function Scanner() {
           onClick={() => {
             setResult(null);
           }}
-          className="mt-4 rounded-xl border border-line bg-white px-4 py-2.5 text-[14px] font-semibold"
+          className={`mt-5 rounded-full px-6 py-2.5 font-display text-[13px] tracking-[0.14em] ${result.ok ? "border border-sage/50 text-sage" : "border border-line bg-white font-sans font-semibold"}`}
         >
           Done
         </button>

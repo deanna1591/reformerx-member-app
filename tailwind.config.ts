@@ -6,8 +6,8 @@ const config: Config = {
     extend: {
       colors: {
         ink: "#171310",
-        chalk: "#FAF9F5",
-        card: "#FFFFFF",
+        chalk: "#F2F0EA",
+        card: "#FDFCF9",
         sage: { DEFAULT: "#C5C3AE", deep: "#8F8D74", soft: "#EFEEE3" },
         tan: { DEFAULT: "#C7B29F", deep: "#93765C" },
         rose: "#DE526F",
@@ -18,7 +18,7 @@ const config: Config = {
           green: "#9AA284",
         },
         smoke: "#7C766E",
-        line: "#E7E4DC",
+        line: "#E4E1D6",
       },
       fontFamily: {
         display: ["Oswald", "'Arial Narrow'", "sans-serif"],

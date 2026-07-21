@@ -37,7 +37,7 @@ export default function Rewards() {
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
       <header className="rise">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">Rewards</p>
-        <h1 className="mt-1 font-display text-[32px] leading-tight">Finish challenges, earn rewards</h1>
+        <h1 className="mt-1 font-display text-[34px] leading-[0.98]">Earn it.<br />Wear it.</h1>
         <p className="mt-2 text-[14px] leading-relaxed text-smoke">
           Every challenge has a reward attached. Complete it and the studio prepares your reward for pickup — no points, no catalog.
         </p>
@@ -48,10 +48,10 @@ export default function Rewards() {
           <h2 className="font-display text-[20px]">Your rewards</h2>
           <div className="mt-3 space-y-3">
             {open.map((r) => (
-              <div key={r.id} className="rounded-xl2 border border-line bg-white p-4">
+              <div key={r.id} className="rounded-[18px] border border-line bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-sage-soft text-2xl">{r.rewardEmoji}</span>
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-ink text-2xl">{r.rewardEmoji}</span>
                     <div>
                       <p className="text-[15px] font-semibold leading-snug">{r.reward}</p>
                       <p className="mt-0.5 text-[12px] text-smoke">
@@ -64,9 +64,12 @@ export default function Rewards() {
                   </span>
                 </div>
                 {r.status === "ready" && (
-                  <p className="mt-3 rounded-xl bg-chalk px-3 py-2.5 text-[13px] text-ink">
-                    Show this screen at reception on your next visit. 🎉
-                  </p>
+                  <>
+                    <div className="mx-1 mt-3 border-t-2 border-dashed border-[#C9C6B8]" />
+                    <p className="px-1 pt-2.5 text-[12px] text-[#55533F]">
+                      Show this screen at reception — they have it waiting. 🎉
+                    </p>
+                  </>
                 )}
               </div>
             ))}

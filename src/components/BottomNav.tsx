@@ -14,17 +14,17 @@ const items = [
 export default function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 mx-auto max-w-md">
-      <div className="relative m-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-end justify-between rounded-2xl bg-ink px-2 pb-2 pt-2 text-white shadow-lift">
+    <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md px-4 pb-[max(0.9rem,env(safe-area-inset-bottom))]">
+      <div className="flex items-center gap-1 rounded-full bg-ink/95 p-1.5 text-white backdrop-blur">
         {items.map((it) =>
           it.href === "/checkin" ? (
             <Link
               key={it.href}
               href="/checkin"
               aria-label="Check in"
-              className="relative -mt-8 grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-ink text-white shadow-lift ring-4 ring-chalk transition active:scale-95"
+              className="grid h-12 w-14 shrink-0 place-items-center rounded-full bg-sage text-ink transition active:scale-95"
             >
-              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M3 3h6v6H3V3Zm12 0h6v6h-6V3ZM3 15h6v6H3v-6Zm12 3h3m3 0h-3m0 0v-3m0 3v3M12 3v4m0 4v2m-2 0h4" />
               </svg>
             </Link>
@@ -32,11 +32,11 @@ export default function BottomNav() {
             <Link
               key={it.href}
               href={it.href}
-              className={`flex flex-1 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-medium transition ${
-                pathname === it.href ? "text-white" : "text-white/50"
+              className={`flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 text-[10px] font-medium transition ${
+                pathname === it.href ? "bg-white/10 text-white" : "text-white/55"
               }`}
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <path d={it.icon} />
               </svg>
               {it.label}

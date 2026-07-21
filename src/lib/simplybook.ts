@@ -27,22 +27,55 @@ export function simplybookConfigured(): boolean {
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+const clean = (v?: string) => (v ?? "").trim().replace(/^["']|["']$/g, "");
+
+/** Auth. API User Keys are accepted by the REST v2 /admin/auth on most accounts,
+ *  but some accounts only honor them via the JSON-RPC getUserToken endpoint —
+ *  so we try REST first and fall back to JSON-RPC. Tokens are interchangeable. */
 async function getToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.token;
-  const res = await fetch(`${BASE}/admin/auth`, {
+  const company = clean(process.env.SIMPLYBOOK_COMPANY);
+  const login = clean(process.env.SIMPLYBOOK_LOGIN);
+  const key = clean(process.env.SIMPLYBOOK_USER_KEY);
+
+  // Attempt 1: REST v2
+  let restError = "";
+  try {
+    const res = await fetch(`${BASE}/admin/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company, login, password: key }),
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { token: string };
+      cachedToken = { token: data.token, expiresAt: Date.now() + 50 * 60 * 1000 };
+      return data.token;
+    }
+    restError = `REST auth ${res.status}: ${await res.text()}`;
+  } catch (e) {
+    restError = `REST auth error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  // Attempt 2: JSON-RPC getUserToken (canonical endpoint for API User Keys)
+  const rpcBase = BASE.replace("user-api-v2", "user-api");
+  const rpcRes = await fetch(`${rpcBase}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      company: process.env.SIMPLYBOOK_COMPANY,
-      login: process.env.SIMPLYBOOK_LOGIN,
-      password: process.env.SIMPLYBOOK_USER_KEY,
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", method: "getUserToken", params: [company, login, key], id: 1 }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`SimplyBook auth failed (${res.status}): ${await res.text()}`);
-  const data = (await res.json()) as { token: string };
-  cachedToken = { token: data.token, expiresAt: Date.now() + 50 * 60 * 1000 }; // tokens last ~1h
-  return data.token;
+  const rpc = (await rpcRes.json().catch(() => ({}))) as { result?: string; error?: { message?: string } };
+  if (rpc.result) {
+    cachedToken = { token: rpc.result, expiresAt: Date.now() + 50 * 60 * 1000 };
+    return rpc.result;
+  }
+
+  throw new Error(
+    `SimplyBook auth failed. ${restError} | JSON-RPC: ${rpc.error?.message ?? rpcRes.status}. ` +
+      `Check: SIMPLYBOOK_LOGIN must be the exact login of the user the API User Key was generated for ` +
+      `(see SimplyBook → Manage → Users, "Login" column — it may differ from the email), and the key must be active.`
+  );
 }
 
 async function sb<T>(path: string): Promise<T> {

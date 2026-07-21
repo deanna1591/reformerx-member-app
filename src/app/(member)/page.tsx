@@ -48,65 +48,65 @@ export default function Home() {
           <h1 className="mt-1 font-display text-[34px] leading-none">Hello, {firstName}</h1>
         </div>
         {streak > 0 && (
-          <span className="mt-1 rounded-full border border-line bg-white px-3 py-1.5 text-[13px] font-semibold">
-            🔥 {streak}-day streak
-          </span>
+          <div className="mt-0.5 min-w-[46px] rounded-full bg-ink px-2 pb-2 pt-2.5 text-center text-chalk">
+            <p className="font-display text-[20px] leading-none">{streak}</p>
+            <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-sage">day<br />streak</p>
+          </div>
         )}
       </header>
 
       {/* Reward ready — the happiest banner in the app */}
       {readyRewards.length > 0 && (
-        <Link href="/rewards" className="rise rise-1 mt-5 block rounded-xl2 bg-sage p-4 text-ink transition active:scale-[0.99]">
+        <Link href="/rewards" className="rise rise-1 mt-4 block rounded-[16px] bg-sage p-3.5 text-ink transition active:scale-[0.99]">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/60 text-2xl">{readyRewards[0].rewardEmoji}</span>
-            <div className="min-w-0">
-              <p className="text-[15px] font-semibold leading-snug">
-                {readyRewards.length === 1 ? `${readyRewards[0].reward} is ready!` : `${readyRewards.length} rewards ready!`}
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-[17px] leading-none">{readyRewards[0].rewardEmoji}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold leading-snug">
+                {readyRewards.length === 1 ? `${readyRewards[0].reward} — ready!` : `${readyRewards.length} rewards ready!`}
               </p>
-              <p className="text-[13px] text-ink/70">Pick up at reception on your next visit →</p>
+              <p className="text-[11.5px] text-ink/60">Waiting at reception</p>
             </div>
+            <span aria-hidden className="text-[15px]">→</span>
           </div>
         </Link>
       )}
 
       {/* Next class — hero card */}
-      <section className="rise rise-1 mt-5 overflow-hidden rounded-xl2 bg-ink p-5 text-white">
+      <section className="rise rise-1 relative mt-5 overflow-hidden rounded-[150px_150px_22px_22px] bg-ink px-5 pb-5 pt-12 text-center text-white">
+        <div aria-hidden className="pointer-events-none absolute inset-x-[10px] top-[10px] h-[190px] rounded-[140px_140px_0_0] border border-b-0 border-sage/35" />
         {nextBooking ? (
           <>
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">Next class</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/logo-white.png" alt="" className="h-3.5 w-auto opacity-70" />
-            </div>
-            <p className="mt-3 font-display text-[30px] leading-none">{nextBooking.title}</p>
-            <p className="mt-2 text-[14px] text-white/70">
-              {fmtDate(nextBooking.startsAt)} · {fmtTime(nextBooking.startsAt)} · with {nextInstructor?.name}
+            <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-sage">
+              {fmtDate(nextBooking.startsAt)} · {fmtTime(nextBooking.startsAt)}
             </p>
-            <div className="mt-5">
+            <p className="mt-2 font-display text-[30px] leading-[1.02]">{nextBooking.title}</p>
+            <p className="mt-2 text-[12px] text-white/60">with {nextInstructor?.name}</p>
+            <div className="mt-4">
               {alreadyIn ? (
-                <span className="inline-block rounded-xl bg-white/10 px-4 py-3 text-[14px] font-semibold text-sage">
-                  Checked in — enjoy the class ✓
+                <span className="inline-block w-full rounded-full bg-white/10 py-3.5 text-[13px] font-semibold uppercase tracking-[0.14em] text-sage">
+                  Checked in ✓
                 </span>
               ) : inWindow ? (
-                <Link href="/checkin" className="block rounded-xl bg-sage py-3.5 text-center text-[15px] font-semibold text-ink transition active:scale-[0.98]">
-                  Check in now
+                <Link href="/checkin" className="block rounded-full bg-sage py-3.5 font-display text-[14px] tracking-[0.14em] text-ink transition active:scale-[0.98]">
+                  Check in
                 </Link>
               ) : (
-                <p className="rounded-xl bg-white/10 px-4 py-3 text-[13px] text-white/70">
-                  Check-in opens 30 minutes before class.
-                </p>
+                <>
+                  <span className="block rounded-full bg-white/10 py-3.5 font-display text-[14px] tracking-[0.14em] text-white/50">Check in</span>
+                  <p className="mt-2.5 text-[10px] text-white/40">Opens 30 minutes before class</p>
+                </>
               )}
             </div>
           </>
         ) : (
           <>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">Next class</p>
-            <p className="mt-3 font-display text-[26px] leading-tight">Nothing booked yet</p>
-            <p className="mt-1 text-[14px] text-white/70">Reserve a class to keep the carriage moving.</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-sage">Next class</p>
+            <p className="mt-3 font-display text-[26px] leading-tight">Nothing booked</p>
+            <p className="mt-1 text-[13px] text-white/60">Reserve a class to keep the carriage moving.</p>
             <a
               href="https://www.reformerx.cz/booking/"
               target="_blank"
-              className="mt-5 block rounded-xl bg-sage py-3.5 text-center text-[15px] font-semibold text-ink"
+              className="mt-4 block rounded-full bg-sage py-3.5 font-display text-[14px] tracking-[0.14em] text-ink"
             >
               Book a class
             </a>
@@ -146,22 +146,25 @@ export default function Home() {
               <Link
                 key={ch.id}
                 href={`/challenges/${ch.id}`}
-                className="w-[80%] shrink-0 snap-start rounded-xl2 border border-line bg-white p-4 transition active:scale-[0.99]"
+                className="w-[82%] shrink-0 snap-start rounded-[20px] border border-line bg-card p-4 transition active:scale-[0.99]"
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-[15px] font-semibold">
-                    {ch.emoji} {ch.name}
-                  </p>
-                  <p className="text-[13px] font-semibold tabular-nums text-smoke">
-                    {value}/{ch.goal}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-tan-deep">{ch.emoji} challenge</p>
+                    <p className="mt-0.5 truncate font-display text-[19px]">{ch.name}</p>
+                  </div>
+                  <p className="shrink-0 text-right">
+                    <span className="font-display text-[32px] leading-none">{value}</span>
+                    <span className="font-display text-[16px] text-smoke">/{ch.goal}</span>
                   </p>
                 </div>
                 <div className="mt-3">
                   <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />
                 </div>
-                <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-medium">
-                  {ch.rewardEmoji ?? "🎁"} {ch.reward}
-                </p>
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-chalk px-3 py-2">
+                  <span className="min-w-0 truncate text-[11.5px] font-semibold">{ch.rewardEmoji ?? "🎁"} {ch.reward}</span>
+                  <span className="shrink-0 text-[11px] font-semibold text-tan-deep">{Math.max(0, ch.goal - value)} to go</span>
+                </div>
               </Link>
             ))}
           </div>
