@@ -29,3 +29,22 @@ self.addEventListener("fetch", (e) => {
       .catch(() => caches.match(request).then((m) => m || caches.match("/")))
   );
 });
+
+// ---- Web Push ----
+self.addEventListener("push", (event) => {
+  let data = { title: "ReformerX", body: "You have an update." };
+  try { data = { ...data, ...event.data.json() }; } catch (e) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow(event.notification.data?.url || "/"));
+});

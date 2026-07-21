@@ -14,8 +14,32 @@ export async function memberLogin(formData: FormData) {
   const db = getDB();
   const member = db.members.find((m) => m.email.toLowerCase() === email);
   if (!member) redirect("/login?error=1");
+
+  // Referral capture: only on a member's first-ever sign-in, before any classes
+  const refCode = String(formData.get("referral") ?? "").trim().toUpperCase();
+  if (refCode && !member!.referredBy && !db.checkIns.some((ci) => ci.memberId === member!.id)) {
+    const referrer = db.members.find((m) => m.qrCode.toUpperCase() === refCode && m.id !== member!.id);
+    if (referrer) {
+      member!.referredBy = referrer.id;
+      notify(referrer.id, `🤝 ${member!.name.split(" ")[0]} joined with your code! Their first check-in counts toward Bring a Friend.`);
+      saveDB();
+    }
+  }
+
   cookies().set("rx_member", member!.id, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 90 });
   redirect("/");
+}
+
+export async function savePushSubscription(sub: unknown) {
+  const memberId = cookies().get("rx_member")?.value;
+  if (!memberId) return;
+  const db = getDB();
+  const endpoint = (sub as { endpoint?: string }).endpoint;
+  db.pushSubs = db.pushSubs.filter(
+    (s) => !(s.memberId === memberId && (s.sub as { endpoint?: string }).endpoint === endpoint)
+  );
+  db.pushSubs.push({ memberId, sub });
+  saveDB();
 }
 
 export async function memberLogout() {
@@ -43,6 +67,10 @@ export async function checkInAction(code: string): Promise<CheckInResult> {
   if (!memberId)
     return { ok: false, message: "Please sign in first.", completedChallenges: [], earnedRewards: [], newBadges: [] };
   const result = performCheckIn(memberId, code);
+  if (result.ok && result.completedChallenges.length > 0) {
+    const { sendPush } = await import("@/lib/push");
+    void sendPush(memberId, `🎉 ${result.completedChallenges[0]} complete — reward unlocked: ${result.earnedRewards[0] ?? ""}`, "/rewards");
+  }
   revalidatePath("/");
   revalidatePath("/challenges");
   revalidatePath("/profile");
@@ -129,8 +157,11 @@ export async function setRewardStatus(rewardId: string, status: "ready" | "colle
   er.status = status;
   er.decidedAt = new Date().toISOString();
   const label = `${er.rewardEmoji} ${er.reward}`;
-  if (status === "ready")
+  if (status === "ready") {
     notify(er.memberId, `🎁 Your reward is ready: ${label}. Pick it up at reception on your next visit.`);
+    const { sendPush } = await import("@/lib/push");
+    void sendPush(er.memberId, `🎁 ${er.reward} is ready at reception!`, "/rewards");
+  }
   if (status === "collected") notify(er.memberId, `Enjoy your ${er.reward}! Thanks for crushing ${er.challengeName}.`);
   if (status === "declined")
     notify(er.memberId, `About your ${er.challengeName} reward — please ask at reception for details.`);
@@ -146,6 +177,8 @@ export async function sendAnnouncement(formData: FormData) {
   const db = getDB();
   db.members.forEach((m) => notify(m.id, `📣 ${text}`));
   saveDB();
+  const { sendPushToAll } = await import("@/lib/push");
+  void sendPushToAll(`📣 ${text}`);
   revalidatePath("/admin");
 }
 

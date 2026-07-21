@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB } from "@/lib/store";
-import { fmtDate, fmtTime, membershipActive, memberStats } from "@/lib/engine";
+import { fmtDate, fmtTime, membershipActive, memberStats, personalRecords } from "@/lib/engine";
 import QRDisplay from "@/components/QRDisplay";
 import { memberLogout } from "@/app/actions";
+import PushOptIn from "@/components/PushOptIn";
+import ShareButton from "@/components/ShareButton";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,7 @@ export default function ProfilePage() {
   if (!member) redirect("/login");
   const db = getDB();
   const stats = memberStats(member.id);
+  const records = personalRecords(member.id);
   const active = membershipActive(member);
 
   const badges = db.earnedBadges
@@ -52,6 +55,58 @@ export default function ProfilePage() {
         {stat("This month", stats.thisMonth)}
         {stat("Favourite coach", stats.favInstructor)}
         {stat("Favourite time", stats.favTime)}
+      </section>
+
+      <section className="mt-7">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-[22px]">Personal records</h2>
+          <ShareButton
+            label="Share"
+            text={`My ReformerX records: ${stats.total} classes, longest streak ${records.longestStreak} days${records.bestMonth ? `, best month ${records.bestMonth.count} classes` : ""}. 🖤`}
+          />
+        </div>
+        <div className="mt-3 divide-y divide-line rounded-xl2 border border-line bg-white">
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-[14px]">🔥 Longest streak</p>
+            <p className="text-[14px] font-semibold tabular-nums">{records.longestStreak} days</p>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-[14px]">📆 Best month</p>
+            <p className="text-[14px] font-semibold">
+              {records.bestMonth ? `${records.bestMonth.count} classes · ${records.bestMonth.label}` : "—"}
+            </p>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-[14px]">🚃 First class</p>
+            <p className="text-[14px] font-semibold">{records.firstClass ? fmtDate(records.firstClass) : "—"}</p>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-[14px]">🤝 Friends brought in</p>
+            <p className="text-[14px] font-semibold tabular-nums">{records.referrals}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-7 rounded-xl2 bg-ink p-5 text-white">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">Bring a friend</p>
+        <p className="mt-2 text-[14px] leading-relaxed text-white/80">
+          Give a friend your member code. When they join with it and take their first class, you both win — you get the Bring a Friend reward.
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white/10 px-4 py-3">
+          <p className="font-display text-[18px] tracking-wide">{member.qrCode}</p>
+          <ShareButton
+            label="Invite"
+            text={`Join me at ReformerX (Prague 1)! Use my member code ${member.qrCode} when you sign in to the app. 🤸`}
+          />
+        </div>
+      </section>
+
+      <section className="mt-7 rounded-xl2 border border-line bg-white p-5">
+        <h2 className="font-display text-[18px]">Notifications</h2>
+        <p className="mt-1 text-[13px] text-smoke">Get pinged when rewards are ready and milestones hit.</p>
+        <div className="mt-3">
+          <PushOptIn vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY} />
+        </div>
       </section>
 
       <section className="mt-7">

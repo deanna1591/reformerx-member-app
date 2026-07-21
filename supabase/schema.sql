@@ -13,7 +13,8 @@ create table members (
   membership_expires timestamptz,
   joined_at timestamptz not null default now(),
   qr_code text not null unique default ('RXM-' || upper(substr(uuid_generate_v4()::text, 1, 8))),
-  simplybook_id text unique
+  simplybook_id text unique,
+  referred_by uuid references members(id)
 );
 
 create table instructors (
@@ -102,6 +103,14 @@ create table earned_rewards (
   status text not null default 'earned' check (status in ('earned', 'ready', 'collected', 'declined')),
   decided_at timestamptz,
   unique (member_id, challenge_id) -- one reward per challenge per member
+);
+
+create table push_subscriptions (
+  id uuid primary key default uuid_generate_v4(),
+  member_id uuid not null references members(id) on delete cascade,
+  subscription jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (member_id, subscription)
 );
 
 create table notifications (

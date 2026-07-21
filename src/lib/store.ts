@@ -92,6 +92,7 @@ function seed(): DB {
       joinedAt: iso(daysFromNow(-90)),
       qrCode: "RXM-TOMAS-5511",
       simplybookId: "sb-1003",
+      referredBy: "m-you",
     },
     {
       id: "m-eliska",
@@ -210,6 +211,32 @@ function seed(): DB {
         active: true,
       },
       {
+        id: "ch-friend",
+        name: "Bring a Friend",
+        emoji: "🤝",
+        description: "Share your member code. When a friend joins with it and takes their first class, a guest pass is yours.",
+        type: "referrals",
+        goal: 1,
+        reward: "Guest pass",
+        rewardEmoji: "🎟️",
+        springColor: "green",
+        leaderboard: false,
+        active: true,
+      },
+      {
+        id: "ch-monthly",
+        name: "Monthly Rhythm",
+        emoji: "📆",
+        description: "Eight classes this calendar month. Resets on the 1st — a fresh smoothie every month you hit it.",
+        type: "monthly_count",
+        goal: 8,
+        reward: "Protein smoothie",
+        rewardEmoji: "🥤",
+        springColor: "yellow",
+        leaderboard: false,
+        active: true,
+      },
+      {
         id: "ch-instructors",
         name: "Meet Every Coach",
         emoji: "🎯",
@@ -226,6 +253,7 @@ function seed(): DB {
     challengeProgress: [
       { memberId: "m-you", challengeId: "ch-10in30", joinedAt: iso(daysFromNow(-15)), progress: 0 },
       { memberId: "m-you", challengeId: "ch-first100", joinedAt: iso(daysFromNow(-200)), progress: 0 },
+      { memberId: "m-you", challengeId: "ch-monthly", joinedAt: iso(daysFromNow(-20)), progress: 0 },
       { memberId: "m-jana", challengeId: "ch-10in30", joinedAt: iso(daysFromNow(-15)), progress: 10, completedAt: iso(daysFromNow(-2)) },
       { memberId: "m-jana", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
       { memberId: "m-you", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
@@ -260,6 +288,7 @@ function seed(): DB {
       },
     ],
     notifications: [],
+    pushSubs: [],
     settings: { leaderboardsEnabled: true, studioCode: "RX-STUDIO-CHECKIN" },
   };
   return db;

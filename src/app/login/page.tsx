@@ -20,6 +20,10 @@ export default function Login({ searchParams }: { searchParams: { error?: string
           <label htmlFor="email">Email you use for booking</label>
           <input id="email" name="email" type="email" required placeholder="you@example.com" className="mt-1.5" />
         </div>
+        <div>
+          <label htmlFor="referral">Friend&apos;s member code <span className="font-normal text-smoke">(optional, first sign-in only)</span></label>
+          <input id="referral" name="referral" type="text" placeholder="RXM-XXXX-0000" className="mt-1.5" />
+        </div>
         {searchParams.error && (
           <p className="text-[13px] text-spring-red">
             We couldn&apos;t find that email. It must match your SimplyBook membership account.

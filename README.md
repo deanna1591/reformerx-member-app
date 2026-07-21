@@ -75,6 +75,14 @@ docs/                   SimplyBook & WordPress integration guide
 public/                 PWA manifest, service worker, icons
 ```
 
+## Also built in
+
+- **Bring a Friend + referral tracking** — every member's QR code doubles as a referral code; a friend enters it on first sign-in, and their first check-in completes the referrer's Bring a Friend challenge
+- **Monthly attendance goals** — the `monthly_count` challenge type resets each calendar month (seeded: Monthly Rhythm, 8 classes → smoothie)
+- **Personal records** — longest streak, best month, first class, friends brought in (on the profile)
+- **Social sharing** — share records and invites via the native share sheet (Web Share API, clipboard fallback)
+- **Web Push notifications** — real push for reward-ready, challenge completions, and announcements. Generate keys with `npx web-push generate-vapid-keys`, set the three VAPID env vars (see `.env.example`), and members opt in from their profile. On iOS this requires the installed PWA (iOS 16.4+), which the app already encourages.
+
 ## Roadmap hooks already in place
 
 - **Leaderboards** — built, with a studio-level on/off switch (some studios dislike public rankings)

@@ -136,7 +136,60 @@ export function computeProgress(memberId: string, ch: Challenge): number {
     }
     case "streak_days":
       return currentStreak(memberId);
+    case "monthly_count": {
+      const now = new Date();
+      return mine.filter((ci) => {
+        const d = new Date(ci.at);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }).length;
+    }
+    case "referrals":
+      return db.members.filter(
+        (m) => m.referredBy === memberId && db.checkIns.some((ci) => ci.memberId === m.id)
+      ).length;
   }
+}
+
+/** All-time bests for the profile "Personal records" section. */
+export function personalRecords(memberId: string) {
+  const db = getDB();
+  const mine = db.checkIns
+    .filter((ci) => ci.memberId === memberId)
+    .sort((a, b) => +new Date(a.at) - +new Date(b.at));
+
+  // longest streak ever
+  const days = Array.from(new Set(mine.map((ci) => new Date(ci.at).setHours(0, 0, 0, 0)))).sort((a, b) => a - b);
+  let longest = 0, run = 0, prev = 0;
+  for (const d of days) {
+    run = prev && d - prev === 86400000 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    prev = d;
+  }
+
+  // best month
+  const byMonth: Record<string, number> = {};
+  for (const ci of mine) {
+    const d = new Date(ci.at);
+    const k = `${d.getFullYear()}-${d.getMonth()}`;
+    byMonth[k] = (byMonth[k] ?? 0) + 1;
+  }
+  const best = Object.entries(byMonth).sort((a, b) => b[1] - a[1])[0];
+  const bestMonthLabel = best
+    ? new Date(Number(best[0].split("-")[0]), Number(best[0].split("-")[1])).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : null;
+
+  const earliest = mine
+    .map((ci) => db.classes.find((c) => c.id === ci.classId))
+    .filter(Boolean)
+    .sort((a, b) => new Date(a!.startsAt).getHours() * 60 + new Date(a!.startsAt).getMinutes() - (new Date(b!.startsAt).getHours() * 60 + new Date(b!.startsAt).getMinutes()))[0];
+
+  return {
+    longestStreak: longest,
+    bestMonth: best ? { label: bestMonthLabel!, count: best[1] } : null,
+    firstClass: mine[0]?.at ?? null,
+    earliestClassTime: earliest ? fmtTime(earliest.startsAt) : null,
+    referrals: db.members.filter((m) => m.referredBy === memberId && db.checkIns.some((ci) => ci.memberId === m.id)).length,
+  };
 }
 
 export function currentStreak(memberId: string): number {

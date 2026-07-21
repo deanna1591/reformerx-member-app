@@ -59,6 +59,8 @@ export default function AdminChallenges() {
                   <option value="streak_days">Consecutive days</option>
                   <option value="instructor_variety">Different instructors</option>
                   <option value="lifetime_count">Lifetime classes</option>
+                  <option value="monthly_count">Classes per calendar month (resets)</option>
+                  <option value="referrals">Friends referred (first class taken)</option>
                 </select>
               </div>
               <div>

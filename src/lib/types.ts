@@ -9,6 +9,7 @@ export interface Member {
   joinedAt: string; // ISO date
   qrCode: string; // encoded in personal QR
   simplybookId?: string;
+  referredBy?: string; // memberId of who referred them
   isAdmin?: boolean;
 }
 
@@ -44,7 +45,9 @@ export type ChallengeType =
   | "class_count" // N classes within date range
   | "streak_days" // N consecutive days with a class
   | "instructor_variety" // one class with each of N instructors
-  | "lifetime_count"; // N classes total, ever
+  | "lifetime_count" // N classes total, ever
+  | "monthly_count" // N classes in the current calendar month (resets monthly)
+  | "referrals"; // N friends who joined with your code and took their first class
 
 export interface Challenge {
   id: string;
@@ -119,5 +122,6 @@ export interface DB {
   earnedBadges: EarnedBadge[];
   earnedRewards: EarnedReward[];
   notifications: AppNotification[];
+  pushSubs: { memberId: string; sub: unknown }[];
   settings: { leaderboardsEnabled: boolean; studioCode: string; lastSync?: string };
 }
