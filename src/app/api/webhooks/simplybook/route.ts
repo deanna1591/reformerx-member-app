@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { simplybookConfigured, syncFromSimplybook } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * SimplyBook "Ticket callback URL" target.

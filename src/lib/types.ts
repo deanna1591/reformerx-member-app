@@ -1,4 +1,4 @@
-export type MembershipType = "Single Entry" | "Package 10" | "Monthly Pass" | "Unlimited";
+export type MembershipType = "Single Entry" | "Package 10" | "Monthly Pass" | "Unlimited" | "Member";
 
 export interface Member {
   id: string;

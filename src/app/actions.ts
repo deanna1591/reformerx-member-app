@@ -199,9 +199,11 @@ export async function simulateSimplybookSync() {
     // Real sync against the SimplyBook REST v2 admin API.
     try {
       const result = await syncFromSimplybook();
+      console.log("[sync]", result.message);
       getDB().settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message}`;
       saveDB();
     } catch (e) {
+      console.error("[sync] threw:", e);
       db.settings.lastSync = `${new Date().toISOString()}|err|${e instanceof Error ? e.message : "Sync failed"}`;
       saveDB();
     }

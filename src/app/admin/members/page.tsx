@@ -1,8 +1,10 @@
 import { getDB } from "@/lib/store";
 import { fmtDate, membershipActive, memberStats } from "@/lib/engine";
 import { simulateSimplybookSync } from "@/app/actions";
+import SyncButton from "@/components/SyncButton";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default function AdminMembers() {
   const db = getDB();
@@ -11,9 +13,7 @@ export default function AdminMembers() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-[32px]">Members</h1>
         <form action={simulateSimplybookSync}>
-          <button className="rounded-xl bg-ink px-4 py-2.5 text-[13px] font-semibold text-white">
-            ↻ Sync from SimplyBook
-          </button>
+          <SyncButton />
         </form>
       </div>
       <p className="mt-1 text-[13px] text-smoke">
@@ -49,6 +49,7 @@ export default function AdminMembers() {
           <tbody>
             {db.members.map((m) => {
               const active = membershipActive(m);
+              const noMembership = new Date(m.membershipExpires).getTime() < new Date("2000-01-01").getTime();
               const stats = memberStats(m.id);
               return (
                 <tr key={m.id} className="border-b border-line/60 last:border-0">
@@ -57,12 +58,12 @@ export default function AdminMembers() {
                     <p className="text-[12px] text-smoke">{m.email}</p>
                   </td>
                   <td className="px-5 py-3">{m.membershipType}</td>
-                  <td className="px-5 py-3 tabular-nums">{fmtDate(m.membershipExpires)}</td>
+                  <td className="px-5 py-3 tabular-nums">{noMembership ? "—" : fmtDate(m.membershipExpires)}</td>
                   <td className="px-5 py-3 tabular-nums">{stats.total}</td>
                   <td className="px-5 py-3 tabular-nums">{stats.rewardsCollected}</td>
                   <td className="px-5 py-3">
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${active ? "bg-spring-green/15 text-spring-green" : "bg-spring-red/15 text-spring-red"}`}>
-                      {active ? "Active" : "Expired"}
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${active ? "bg-spring-green/15 text-spring-green" : noMembership ? "bg-chalk text-smoke" : "bg-spring-red/15 text-spring-red"}`}>
+                      {active ? "Active" : noMembership ? "No membership" : "Expired"}
                     </span>
                   </td>
                 </tr>
