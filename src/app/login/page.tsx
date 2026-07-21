@@ -7,7 +7,8 @@ export default function Login({ searchParams }: { searchParams: { error?: string
   const demo = getDB().members.slice(0, 2);
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 pb-16">
-      <p className="font-display text-[15px] tracking-[0.3em] text-smoke">REFORMER X</p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/logo-ink.png" alt="ReformerX" className="h-9 w-auto self-start" />
       <h1 className="mt-2 font-display text-[40px] leading-[1.05]">
         Your studio,<br />in your pocket.
       </h1>
@@ -24,7 +25,7 @@ export default function Login({ searchParams }: { searchParams: { error?: string
             We couldn&apos;t find that email. It must match your SimplyBook membership account.
           </p>
         )}
-        <button className="w-full rounded-xl bg-plum py-3.5 text-[15px] font-semibold text-white shadow-lift active:scale-[0.98]">
+        <button className="w-full rounded-xl bg-ink py-3.5 text-[15px] font-semibold text-white shadow-lift active:scale-[0.98]">
           Continue
         </button>
       </form>

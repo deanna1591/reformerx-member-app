@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --ink: #191621;
+  --ink: #171310;
   --chalk: #f5f4f1;
-  --plum: #6242a6;
-  --plum-deep: #43286f;
+  --sage: #c5c3ae;
+  --sage-deep: #8f8d74;
 }
 
 html {
@@ -16,7 +16,7 @@ html {
 body {
   background: var(--chalk);
   color: var(--ink);
-  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-family: "Montserrat", system-ui, sans-serif;
   font-feature-settings: "tnum";
 }
 
@@ -69,9 +69,15 @@ body {
 .rise-2 { animation-delay: 0.12s; }
 .rise-3 { animation-delay: 0.2s; }
 
-::selection { background: var(--plum); color: #fff; }
+::selection { background: var(--ink); color: #fff; }
 
 input, select, textarea {
-  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-[15px] outline-none focus:border-plum focus:ring-2 focus:ring-plum/20;
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-[15px] outline-none focus:border-ink focus:ring-2 focus:ring-sage/40;
 }
 label { @apply text-[13px] font-medium text-smoke; }
+
+/* Brand: condensed uppercase display type, like the ReformerX wordmark */
+.font-display {
+  text-transform: uppercase;
+  letter-spacing: 0.015em;
+}

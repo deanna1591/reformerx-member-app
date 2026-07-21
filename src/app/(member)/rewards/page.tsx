@@ -30,7 +30,7 @@ export default function RewardsPage() {
         {db.rewards.filter((r) => r.available).map((r) => (
           <div key={r.id} className="flex items-center justify-between rounded-xl2 bg-card p-4 shadow-card">
             <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-plum-soft text-xl">{r.emoji}</span>
+              <span className="grid h-11 w-11 place-items-center rounded-xl bg-sage-soft text-xl">{r.emoji}</span>
               <p className="text-[15px] font-semibold">{r.name}</p>
             </div>
             <RedeemButton rewardId={r.id} cost={r.cost} canAfford={points >= r.cost} />

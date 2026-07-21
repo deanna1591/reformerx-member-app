@@ -5,7 +5,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-dvh">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col bg-ink p-5 text-white lg:flex">
-        <p className="font-display text-lg tracking-[0.2em]">REFORMER X</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/logo-white.png" alt="ReformerX" className="h-6 w-auto" />
         <p className="mt-0.5 text-[12px] text-white/50">Studio dashboard</p>
         <nav className="mt-8 space-y-1 text-[14px]">
           {[

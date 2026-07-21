@@ -10,7 +10,7 @@ export default function QRDisplay({ value, size = 220 }: { value: string; size?:
       QRCode.toCanvas(ref.current, value, {
         width: size,
         margin: 1,
-        color: { dark: "#191621", light: "#ffffff" },
+        color: { dark: "#171310", light: "#ffffff" },
       });
   }, [value, size]);
   return <canvas ref={ref} className="rounded-xl" aria-label={`QR code: ${value}`} />;

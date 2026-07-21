@@ -107,7 +107,7 @@ export default function Scanner() {
             onClick={startCamera}
             className="absolute inset-0 grid place-items-center text-white"
           >
-            <span className="rounded-2xl bg-plum px-6 py-3.5 text-[15px] font-semibold shadow-lift">
+            <span className="rounded-2xl bg-ink px-6 py-3.5 text-[15px] font-semibold shadow-lift">
               📷 Open camera & scan
             </span>
           </button>

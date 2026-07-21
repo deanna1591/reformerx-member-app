@@ -91,11 +91,11 @@ export default function AdminChallenges() {
                 </select>
               </div>
               <label className="flex items-center gap-2 pb-2.5 text-[13px] font-medium text-ink">
-                <input type="checkbox" name="leaderboard" className="h-4 w-4 accent-plum" style={{ width: "1rem" }} />
+                <input type="checkbox" name="leaderboard" className="h-4 w-4 accent-ink" style={{ width: "1rem" }} />
                 Leaderboard
               </label>
             </div>
-            <button className="w-full rounded-xl bg-plum py-3 text-[14px] font-semibold text-white">Publish challenge</button>
+            <button className="w-full rounded-xl bg-ink py-3 text-[14px] font-semibold text-white">Publish challenge</button>
           </form>
         </section>
       </div>

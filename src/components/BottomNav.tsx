@@ -22,7 +22,7 @@ export default function BottomNav() {
               key={it.href}
               href="/checkin"
               aria-label="Check in"
-              className="relative -mt-8 grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-plum text-white shadow-lift ring-4 ring-chalk transition active:scale-95"
+              className="relative -mt-8 grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-ink text-white shadow-lift ring-4 ring-chalk transition active:scale-95"
             >
               <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M3 3h6v6H3V3Zm12 0h6v6h-6V3ZM3 15h6v6H3v-6Zm12 3h3m3 0h-3m0 0v-3m0 3v3M12 3v4m0 4v2m-2 0h4" />

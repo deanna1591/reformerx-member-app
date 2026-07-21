@@ -30,7 +30,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
 
   return (
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
-      <Link href="/challenges" className="text-[13px] font-semibold text-plum">← Challenges</Link>
+      <Link href="/challenges" className="text-[13px] font-semibold text-tan-deep">← Challenges</Link>
       <h1 className="mt-2 font-display text-[32px] leading-tight">{ch.emoji} {ch.name}</h1>
       <p className="mt-2 text-[15px] text-smoke">{ch.description}</p>
 
@@ -47,7 +47,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
             {ch.startDate && fmtDate(ch.startDate)} — {ch.endDate && fmtDate(ch.endDate)}
           </p>
         )}
-        <p className="mt-3 rounded-xl bg-plum-soft px-3 py-2.5 text-[14px] font-medium text-plum-deep">
+        <p className="mt-3 rounded-xl bg-sage-soft px-3 py-2.5 text-[14px] font-medium text-ink">
           🎁 Reward: {ch.reward}
         </p>
         {progress?.completedAt && (
@@ -63,7 +63,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
             }}
             className="mt-4"
           >
-            <button className="w-full rounded-xl bg-plum py-3 text-[15px] font-semibold text-white active:scale-[0.98]">
+            <button className="w-full rounded-xl bg-ink py-3 text-[15px] font-semibold text-white active:scale-[0.98]">
               Join this challenge
             </button>
           </form>
@@ -75,7 +75,7 @@ export default function ChallengeDetail({ params }: { params: { id: string } }) 
           <h2 className="font-display text-[22px]">Leaderboard</h2>
           <ol className="mt-3 space-y-2">
             {board.map((row, i) => (
-              <li key={row.name} className={`flex items-center justify-between rounded-xl px-4 py-3 shadow-card ${row.name === member.name ? "bg-plum text-white" : "bg-card"}`}>
+              <li key={row.name} className={`flex items-center justify-between rounded-xl px-4 py-3 shadow-card ${row.name === member.name ? "bg-ink text-white" : "bg-card"}`}>
                 <span className="text-[14px] font-semibold">
                   <span className="mr-2 inline-block w-5 text-center">{["🥇","🥈","🥉"][i] ?? i + 1}</span>
                   {row.name}

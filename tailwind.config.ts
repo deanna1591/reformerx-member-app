@@ -5,22 +5,24 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#191621",
-        chalk: "#F5F4F1",
+        ink: "#171310",
+        chalk: "#FAF9F5",
         card: "#FFFFFF",
-        plum: { DEFAULT: "#6242A6", deep: "#43286F", soft: "#EEE9F8" },
+        sage: { DEFAULT: "#C5C3AE", deep: "#8F8D74", soft: "#EFEEE3" },
+        tan: { DEFAULT: "#C7B29F", deep: "#93765C" },
+        rose: "#DE526F",
         spring: {
-          red: "#C94F4F",
-          blue: "#4C6FA5",
-          yellow: "#D9A441",
-          green: "#5E8C61",
+          red: "#B96A5E",
+          blue: "#7C8AA0",
+          yellow: "#C9A96A",
+          green: "#9AA284",
         },
-        smoke: "#7A7684",
-        line: "#E5E2DC",
+        smoke: "#7C766E",
+        line: "#E7E4DC",
       },
       fontFamily: {
-        display: ["Marcellus", "Georgia", "serif"],
-        sans: ["'Instrument Sans'", "system-ui", "sans-serif"],
+        display: ["Oswald", "'Arial Narrow'", "sans-serif"],
+        sans: ["Montserrat", "system-ui", "sans-serif"],
       },
       boxShadow: {
         card: "0 1px 2px rgba(25,22,33,0.05), 0 4px 16px rgba(25,22,33,0.06)",

@@ -1,22 +1,22 @@
 const SPRING: Record<string, string> = {
-  red: "#C94F4F",
-  blue: "#4C6FA5",
-  yellow: "#D9A441",
-  green: "#5E8C61",
-  plum: "#6242A6",
+  red: "#B96A5E",
+  blue: "#7C8AA0",
+  yellow: "#C9A96A",
+  green: "#9AA284",
+  sage: "#8F8D74",
 };
 
 export default function CarriageProgress({
   value,
   goal,
-  color = "plum",
+  color = "sage",
 }: {
   value: number;
   goal: number;
   color?: string;
 }) {
   const pct = Math.min(100, Math.round((value / Math.max(goal, 1)) * 100));
-  const c = SPRING[color] ?? SPRING.plum;
+  const c = SPRING[color] ?? SPRING.sage;
   return (
     <div className="track" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={goal}>
       <div className="track-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c}88, ${c})` }} />

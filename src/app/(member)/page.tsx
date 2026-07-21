@@ -55,6 +55,8 @@ export default function Home() {
 
       {/* Membership pass */}
       <section className={`rise rise-1 mt-5 rounded-xl2 p-5 text-white shadow-lift ${active ? "bg-ink" : "bg-spring-red"}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/logo-white.png" alt="" className="h-4 w-auto opacity-90" />
         <div className="flex items-center justify-between">
           <p className="font-display text-lg tracking-wide">REFORMER X</p>
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${active ? "bg-spring-green/25 text-emerald-200" : "bg-white/20"}`}>
@@ -89,7 +91,7 @@ export default function Home() {
               ) : (
                 <Link
                   href="/checkin"
-                  className="rounded-xl bg-plum px-4 py-2.5 text-[14px] font-semibold text-white transition active:scale-95"
+                  className="rounded-xl bg-ink px-4 py-2.5 text-[14px] font-semibold text-white transition active:scale-95"
                 >
                   Check in
                 </Link>
@@ -117,7 +119,7 @@ export default function Home() {
       <section className="rise rise-3 mt-6">
         <div className="flex items-baseline justify-between">
           <h2 className="font-display text-[22px]">Your challenges</h2>
-          <Link href="/challenges" className="text-[13px] font-semibold text-plum">
+          <Link href="/challenges" className="text-[13px] font-semibold text-tan-deep">
             See all
           </Link>
         </div>
@@ -125,7 +127,7 @@ export default function Home() {
           {myChallenges.length === 0 && (
             <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
               <p className="text-[15px]">No active challenges yet.</p>
-              <Link href="/challenges" className="mt-1 inline-block text-[14px] font-semibold text-plum">
+              <Link href="/challenges" className="mt-1 inline-block text-[14px] font-semibold text-tan-deep">
                 Browse challenges →
               </Link>
             </div>
@@ -152,10 +154,10 @@ export default function Home() {
       {notifications.length > 0 && (
         <section className="mt-6">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-[22px]">Updates {unread && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-plum align-middle" />}</h2>
+            <h2 className="font-display text-[22px]">Updates {unread && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-ink align-middle" />}</h2>
             {unread && (
               <form action={markNotificationsRead}>
-                <button className="text-[13px] font-semibold text-plum">Mark read</button>
+                <button className="text-[13px] font-semibold text-tan-deep">Mark read</button>
               </form>
             )}
           </div>

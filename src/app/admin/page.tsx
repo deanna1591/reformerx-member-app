@@ -84,7 +84,7 @@ export default function AdminOverview() {
           <h2 className="font-display text-[22px]">Send announcement</h2>
           <form action={sendAnnouncement} className="mt-3 space-y-3 rounded-xl2 bg-white p-5 shadow-card">
             <textarea name="text" rows={3} placeholder="New Saturday 9:00 Power Reformer class starts this week…" />
-            <button className="rounded-xl bg-plum px-5 py-2.5 text-[14px] font-semibold text-white">Send to all members</button>
+            <button className="rounded-xl bg-ink px-5 py-2.5 text-[14px] font-semibold text-white">Send to all members</button>
           </form>
           <form action={resetDemoData} className="mt-4">
             <button className="text-[12px] font-medium text-smoke underline">Reset demo data</button>

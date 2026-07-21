@@ -48,7 +48,7 @@ export default function ChallengesPage() {
           )}
         </Link>
         <div className="mt-3 flex items-center justify-between">
-          <p className="text-[12px] font-medium text-plum">🎁 {ch.reward}</p>
+          <p className="text-[12px] font-medium text-tan-deep">🎁 {ch.reward}</p>
           {!isJoined && (
             <form
               action={async () => {
@@ -56,7 +56,7 @@ export default function ChallengesPage() {
                 await joinChallenge(ch.id);
               }}
             >
-              <button className="rounded-xl bg-plum px-4 py-2 text-[13px] font-semibold text-white active:scale-95">
+              <button className="rounded-xl bg-ink px-4 py-2 text-[13px] font-semibold text-white active:scale-95">
                 Join
               </button>
             </form>
