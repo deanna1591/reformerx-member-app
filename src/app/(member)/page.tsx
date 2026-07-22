@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive } from "@/lib/engine";
+import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage } from "@/lib/engine";
+import { STUDIO_TZ } from "@/lib/time";
 import CarriageProgress from "@/components/CarriageProgress";
 import { markNotificationsRead } from "@/app/actions";
 
@@ -14,6 +15,18 @@ export default async function Home() {
   if (!member) redirect("/login");
   const db = getDB();
   const active = membershipActive(member);
+  const pass = passUsage(member!.id);
+  const in3Days = Date.now() + 3 * 86400000;
+  const upcoming3 = db.bookings
+    .filter((b) => b.memberId === member!.id)
+    .map((b) => db.classes.find((c) => c.id === b.classId))
+    .filter((c): c is NonNullable<typeof c> => Boolean(c))
+    .filter((c) => {
+      const t = new Date(c.startsAt).getTime();
+      return t > Date.now() - 30 * 60000 && t < in3Days;
+    })
+    .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt))
+    .map((cls) => ({ cls, coach: db.instructors.find((i) => i.id === cls.instructorId)?.name ?? "ReformerX" }));
 
   const now = Date.now();
   const nextBooking = db.bookings
@@ -115,16 +128,82 @@ export default async function Home() {
         )}
       </section>
 
-      {/* Membership line */}
-      <section className="rise rise-2 mt-3 flex items-center justify-between rounded-xl2 border border-line bg-white px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <span className={`h-2 w-2 rounded-full ${active ? "bg-spring-green" : "bg-spring-red"}`} />
-          <p className="text-[14px] font-medium">{member.membershipType}</p>
+      {/* Pass card — exact product, validity and usage */}
+      <section className="rise rise-2 mt-3 rounded-xl2 border border-line bg-white px-4 py-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${active ? "bg-spring-green" : "bg-spring-red"}`} />
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-semibold">{pass?.name ?? member.membershipType}</p>
+              <p className="mt-0.5 text-[12px] text-smoke">
+                {active
+                  ? `${fmtDate(pass?.start ?? member.joinedAt)} → ${fmtDate(member.membershipExpires)}`
+                  : `expired ${fmtDate(member.membershipExpires)}`}
+              </p>
+            </div>
+          </div>
+          <Link href="/store" className="shrink-0 text-[12px] font-semibold text-tan-deep">
+            {active ? "Manage" : "Renew"}
+          </Link>
         </div>
-        <p className="text-[13px] text-smoke">
-          {active ? `until ${fmtDate(member.membershipExpires)}` : `expired ${fmtDate(member.membershipExpires)}`}
-        </p>
+
+        {active && pass && (
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[13px] font-medium">{pass.summary}</p>
+              <p className="text-[12px] text-smoke">{pass.daysLeft} days left</p>
+            </div>
+            {(pass.credits || pass.totalDays) && (
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-chalk">
+                <div
+                  className="h-full rounded-full bg-sage"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      pass.credits
+                        ? Math.round((pass.used / pass.credits) * 100)
+                        : Math.round((((pass.daysUsed ?? 0) + 1) / (pass.totalDays ?? 1)) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </section>
+
+      {/* Next 3 days */}
+      {upcoming3.length > 0 && (
+        <section className="rise rise-2 mt-6">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-[22px]">Next 3 days</h2>
+            <Link href="/schedule" className="text-[13px] font-semibold text-tan-deep">
+              Full schedule →
+            </Link>
+          </div>
+          <div className="mt-3 space-y-2">
+            {upcoming3.map(({ cls, coach }) => (
+              <Link
+                key={cls.id}
+                href={`/class/${encodeURIComponent(cls.id)}`}
+                className="flex items-center gap-3 rounded-xl2 bg-card p-4 shadow-card"
+              >
+                <div className="w-[70px] shrink-0">
+                  <p className="font-display text-[15px] leading-none">
+                    {new Date(cls.startsAt).toLocaleDateString("en-GB", { timeZone: STUDIO_TZ, weekday: "short" })}
+                  </p>
+                  <p className="mt-1 text-[13px] font-semibold tabular-nums">{fmtTime(cls.startsAt)}</p>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{cls.title}</p>
+                  <p className="text-[12px] text-smoke">{coach}</p>
+                </div>
+                <span className="shrink-0 text-[12px] font-semibold text-tan-deep">Manage →</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Challenges */}
       <section className="rise rise-3 mt-7">

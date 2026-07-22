@@ -5,21 +5,56 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDB, saveDB, ensureDB, resetDB } from "@/lib/store";
 import { performCheckIn, notify, CheckInResult } from "@/lib/engine";
+import { currentMember } from "@/lib/auth";
 import { Member, Challenge } from "@/lib/types";
 
 /* ---------- auth ---------- */
 
-export async function memberLogin(formData: FormData) {
+/** Step 1 — email a one-time code to a SimplyBook client. */
+export async function requestLoginCode(formData: FormData) {
   await ensureDB();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const referral = String(formData.get("referral") ?? "").trim();
+  if (!email) redirect("/login?error=email");
+
   const db = getDB();
   const member = db.members.find((m) => m.email.toLowerCase() === email);
-  if (!member) redirect("/login?error=1");
 
-  // Referral capture: only on a member's first-ever sign-in, before any classes
-  const refCode = String(formData.get("referral") ?? "").trim().toUpperCase();
-  if (refCode && !member!.referredBy && !db.checkIns.some((ci) => ci.memberId === member!.id)) {
-    const referrer = db.members.find((m) => m.qrCode.toUpperCase() === refCode && m.id !== member!.id);
+  // Only send to real members, but never reveal which addresses exist.
+  if (member) {
+    const { issueCode } = await import("@/lib/otp");
+    const code = issueCode(email);
+    if (code === null) redirect(`/login?step=code&email=${encodeURIComponent(email)}&error=rate`);
+    const { sendEmail, loginCodeEmail } = await import("@/lib/email");
+    const msg = loginCodeEmail(code, member.name.split(" ")[0]);
+    await sendEmail(member.email, msg.subject, msg.html, msg.text);
+  }
+
+  const qs = new URLSearchParams({ step: "code", email });
+  if (referral) qs.set("referral", referral);
+  redirect(`/login?${qs.toString()}`);
+}
+
+/** Step 2 — verify the code and start the session. */
+export async function verifyLoginCode(formData: FormData) {
+  await ensureDB();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const code = String(formData.get("code") ?? "").trim();
+  const referral = String(formData.get("referral") ?? "").trim().toUpperCase();
+  const back = (reason: string) =>
+    redirect(`/login?step=code&email=${encodeURIComponent(email)}&error=${reason}`);
+
+  const { verifyCode } = await import("@/lib/otp");
+  const result = verifyCode(email, code);
+  if (!result.ok) back(result.reason === "That code expired." ? "expired" : "code");
+
+  const db = getDB();
+  const member = db.members.find((m) => m.email.toLowerCase() === email);
+  if (!member) back("code");
+
+  // Referral capture: first sign-in only, before any classes
+  if (referral && !member!.referredBy && !db.checkIns.some((ci) => ci.memberId === member!.id)) {
+    const referrer = db.members.find((m) => m.qrCode.toUpperCase() === referral && m.id !== member!.id);
     if (referrer) {
       member!.referredBy = referrer.id;
       notify(referrer.id, `🤝 ${member!.name.split(" ")[0]} joined with your code! Their first check-in counts toward Bring a Friend.`);
@@ -307,3 +342,219 @@ export async function resetDemoData() {
 }
 
 /* ---------- admin member management ---------- */
+
+/* ---------- member booking ---------- */
+
+export async function reserveClass(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const cls = db.classes.find((c) => c.id === classId);
+  if (!cls) return;
+
+  // Already booked? Nothing to do.
+  if (db.bookings.some((b) => b.memberId === member.id && b.classId === classId)) {
+    revalidatePath("/schedule");
+    return;
+  }
+
+  const { createSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
+  if (!inAppBookingEnabled() || !cls.serviceId || !member.simplybookId) {
+    notify(member.id, "Reservations are handled on the ReformerX booking page for now.");
+    saveDB();
+    return;
+  }
+
+  const res = await createSimplybookBooking({
+    clientId: member.simplybookId,
+    serviceId: cls.serviceId,
+    unitId: cls.unitId,
+    startsAt: cls.startsAt,
+  });
+
+  if (res.ok) {
+    db.bookings.push({
+      id: `b-app-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      memberId: member.id,
+      classId,
+      source: "app",
+      simplybookBookingId: res.id,
+      bookedAt: new Date().toISOString(),
+    });
+    notify(member.id, `Booked: ${cls.title} on ${new Date(cls.startsAt).toLocaleString()}`);
+  } else {
+    notify(member.id, `Could not reserve ${cls.title}: ${res.message}`);
+  }
+  saveDB();
+  revalidatePath("/schedule");
+  revalidatePath("/");
+}
+
+export async function cancelReservation(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const booking = db.bookings.find((b) => b.memberId === member.id && b.classId === classId);
+  if (!booking) return;
+
+  if (booking.simplybookBookingId) {
+    const { cancelSimplybookBooking } = await import("@/lib/simplybook");
+    const res = await cancelSimplybookBooking(booking.simplybookBookingId);
+    if (!res.ok) {
+      notify(member.id, `Could not cancel: ${res.message}`);
+      saveDB();
+      return;
+    }
+  }
+  db.bookings = db.bookings.filter((b) => b !== booking);
+  const cls = db.classes.find((c) => c.id === classId);
+  notify(member.id, `Cancelled: ${cls?.title ?? "class"}`);
+  saveDB();
+  revalidatePath("/schedule");
+  revalidatePath("/");
+}
+
+export async function rescheduleClass(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const fromId = String(formData.get("fromClassId") ?? "");
+  const toId = String(formData.get("toClassId") ?? "");
+  const db = getDB();
+  const booking = db.bookings.find((b) => b.memberId === member.id && b.classId === fromId);
+  const target = db.classes.find((c) => c.id === toId);
+  if (!booking || !target) return;
+  if (db.bookings.some((b) => b.memberId === member.id && b.classId === toId)) return;
+
+  const { createSimplybookBooking, cancelSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
+
+  if (inAppBookingEnabled() && member.simplybookId && target.serviceId) {
+    // Take the new spot first — if it's full, the member keeps the original class.
+    const created = await createSimplybookBooking({
+      clientId: member.simplybookId,
+      serviceId: target.serviceId,
+      unitId: target.unitId,
+      startsAt: target.startsAt,
+      durationMin: target.durationMin,
+    });
+    if (!created.ok) {
+      notify(member.id, `Could not move: ${created.message}`);
+      saveDB();
+      return;
+    }
+    if (booking.simplybookBookingId) await cancelSimplybookBooking(booking.simplybookBookingId);
+    booking.simplybookBookingId = created.id;
+  }
+
+  booking.classId = toId;
+  booking.bookedAt = new Date().toISOString();
+  notify(member.id, `Moved to ${target.title} on ${new Date(target.startsAt).toLocaleString()}`);
+  saveDB();
+  revalidatePath("/schedule");
+  revalidatePath(`/class/${toId}`);
+  revalidatePath("/");
+  redirect(`/class/${toId}`);
+}
+
+/* ---------- instructors & staff ---------- */
+
+function requireOwner() {
+  const { isOwner } = require("@/lib/staff") as typeof import("@/lib/staff");
+  if (!isOwner()) redirect("/admin/login");
+}
+
+export async function saveInstructor(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+
+  const role = String(formData.get("role") ?? "Instructor").trim();
+  const bio = String(formData.get("bio") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const pin = String(formData.get("pin") ?? "").trim();
+  const staffRole = String(formData.get("staffRole") ?? "instructor") === "owner" ? "owner" : "instructor";
+  const active = formData.get("active") !== null;
+  const photoUrlField = String(formData.get("photoUrl") ?? "").trim();
+
+  // Photo upload → data URL (kept small; the studio has a handful of coaches)
+  let photoUrl = photoUrlField || undefined;
+  const file = formData.get("photo");
+  if (file && typeof file === "object" && "arrayBuffer" in file && (file as File).size > 0) {
+    const f = file as File;
+    if (f.size <= 900_000 && f.type.startsWith("image/")) {
+      const buf = Buffer.from(await f.arrayBuffer());
+      photoUrl = `data:${f.type};base64,${buf.toString("base64")}`;
+    }
+  }
+
+  const { hashPin } = await import("@/lib/staff");
+  const existing = id ? db.instructors.find((i) => i.id === id) : undefined;
+
+  if (existing) {
+    existing.name = name;
+    existing.role = role;
+    existing.bio = bio || undefined;
+    if (photoUrl) existing.photoUrl = photoUrl;
+    existing.email = email || undefined;
+    if (pin) existing.pinHash = hashPin(pin);
+    existing.staffRole = staffRole;
+    existing.active = active;
+  } else {
+    db.instructors.push({
+      id: `i-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      role,
+      bio: bio || undefined,
+      photoUrl,
+      email: email || undefined,
+      pinHash: pin ? hashPin(pin) : undefined,
+      staffRole,
+      active,
+    });
+  }
+  saveDB();
+  revalidatePath("/admin/instructors");
+  revalidatePath("/schedule");
+  redirect("/admin/instructors?saved=1");
+}
+
+export async function removeInstructorPhoto(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const inst = db.instructors.find((i) => i.id === String(formData.get("id")));
+  if (inst) {
+    inst.photoUrl = undefined;
+    saveDB();
+  }
+  revalidatePath("/admin/instructors");
+}
+
+export async function staffLogin(formData: FormData) {
+  await ensureDB();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const pin = String(formData.get("pin") ?? "").trim();
+  const db = getDB();
+  const staff = db.instructors.find((i) => (i.email ?? "").toLowerCase() === email && i.active !== false);
+  const { pinMatches } = await import("@/lib/staff");
+  if (!staff || !pinMatches(pin, staff.pinHash)) redirect("/staff/login?error=1");
+  cookies().set("rx_staff", staff!.id, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 12 });
+  if (staff!.staffRole === "owner") {
+    cookies().set("rx_admin", "1", { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 12 });
+  }
+  redirect("/admin");
+}
+
+export async function staffLogout() {
+  await ensureDB();
+  cookies().delete("rx_staff");
+  cookies().delete("rx_admin");
+  redirect("/staff/login");
+}

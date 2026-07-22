@@ -132,7 +132,7 @@ export default async function AdminMembers({
           {chip("expired", "Expired")}
           {chip("none", "No membership")}
         </div>
-        <form action="/admin/members" method="GET" className="ml-auto">
+        <form action="/admin/members" method="GET" className="flex items-center gap-2">
           {q && <input type="hidden" name="q" value={q} />}
           {status !== "all" && <input type="hidden" name="status" value={status} />}
           <select
@@ -145,23 +145,23 @@ export default async function AdminMembers({
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button className="ml-2 rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">Filter</button>
+          <button className="rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">Filter</button>
         </form>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl2 bg-white shadow-card">
-        <table className="w-full text-left text-[14px]">
+      <div className="mt-4 overflow-x-auto rounded-xl2 bg-white shadow-card">
+        <table className="w-full min-w-[880px] text-left text-[14px]">
           <thead className="border-b border-line text-[12px] uppercase tracking-wider text-smoke">
             <tr>
-              <th className="px-5 py-3">Member</th>
-              <th className="px-5 py-3">Membership</th>
-              <th className="px-5 py-3">Expires</th>
-              <th className="px-5 py-3" title="Classes attended (SimplyBook history + app check-ins)">Attended</th>
-              <th className="px-5 py-3" title="QR check-ins in the app">Check-ins</th>
-              <th className="px-5 py-3" title="Challenges joined → completed">Challenges</th>
-              <th className="px-5 py-3">Rewards</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3"></th>
+              <th className="px-4 py-3">Member</th>
+              <th className="px-4 py-3">Membership</th>
+              <th className="px-4 py-3">Expires</th>
+              <th className="px-4 py-3" title="Classes attended (SimplyBook history + app check-ins)">Attended</th>
+              <th className="px-4 py-3" title="QR check-ins in the app">Check-ins</th>
+              <th className="px-4 py-3" title="Challenges joined → completed">Challenges</th>
+              <th className="px-4 py-3">Rewards</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -170,30 +170,30 @@ export default async function AdminMembers({
               const act = memberActivity(m.id);
               return (
                 <tr key={m.id} className="transition hover:bg-chalk/60">
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3">
                     <Link href={`/admin/members/${m.id}`} className="block">
                       <p className="font-medium">{m.name}</p>
                       <p className="text-[12px] text-smoke">{m.email}</p>
                     </Link>
                   </td>
-                  <td className="px-5 py-3">{m.membershipType}</td>
-                  <td className="px-5 py-3 tabular-nums">{st === "none" ? "—" : fmtDate(m.membershipExpires)}</td>
-                  <td className="px-5 py-3 tabular-nums">{act.attended}</td>
-                  <td className="px-5 py-3 tabular-nums">{act.checkIns}</td>
-                  <td className="px-5 py-3 tabular-nums">
+                  <td className="px-4 py-3">{m.membershipType}</td>
+                  <td className="px-4 py-3 tabular-nums">{st === "none" ? "—" : fmtDate(m.membershipExpires)}</td>
+                  <td className="px-4 py-3 tabular-nums">{act.attended}</td>
+                  <td className="px-4 py-3 tabular-nums">{act.checkIns}</td>
+                  <td className="px-4 py-3 tabular-nums">
                     {act.challengesJoined}
                     <span className="text-smoke"> → </span>
                     <span className={act.challengesCompleted > 0 ? "font-semibold text-spring-green" : ""}>{act.challengesCompleted}</span>
                   </td>
-                  <td className="px-5 py-3 tabular-nums">{act.rewardsEarned}</td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3 tabular-nums">{act.rewardsEarned}</td>
+                  <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${
                       st === "active" ? "bg-spring-green/15 text-spring-green" : st === "none" ? "bg-chalk text-smoke" : "bg-spring-red/15 text-spring-red"
                     }`}>
                       {st === "active" ? "Active" : st === "none" ? "No membership" : "Expired"}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-4 py-3 text-right">
                     <Link href={`/admin/members/${m.id}`} className="text-[13px] font-semibold text-tan-deep">
                       Manage →
                     </Link>
@@ -202,7 +202,7 @@ export default async function AdminMembers({
               );
             })}
             {slice.length === 0 && (
-              <tr><td colSpan={9} className="px-5 py-8 text-center text-[14px] text-smoke">No members match. Clear the search or filters.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[14px] text-smoke">No members match. Clear the search or filters.</td></tr>
             )}
           </tbody>
         </table>

@@ -13,7 +13,8 @@
  *   SIMPLYBOOK_API_BASE   default "https://user-api-v2.simplybook.it"
  */
 import { getDB, saveDB } from "./store";
-import type { Member, MembershipType } from "./types";
+import { studioToISO, isoToStudioString } from "./time";
+import type { Member, MembershipType , DB } from "./types";
 
 const BASE = process.env.SIMPLYBOOK_API_BASE || "https://user-api-v2.simplybook.it";
 
@@ -78,22 +79,25 @@ async function getToken(): Promise<string> {
   );
 }
 
-async function sb<T>(path: string): Promise<T> {
+async function sb<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const token = await getToken();
   const res = await fetch(`${BASE}${path}`, {
+    ...init,
     headers: {
       "Content-Type": "application/json",
       "X-Company-Login": process.env.SIMPLYBOOK_COMPANY as string,
       "X-Token": token,
+      ...(init?.headers ?? {}),
     },
     cache: "no-store",
   });
-  if (res.status === 401) {
+  if (res.status === 401 && retry) {
     cachedToken = null; // token expired → retry once
-    return sb<T>(path);
+    return sb<T>(path, init, false);
   }
   if (!res.ok) throw new Error(`SimplyBook ${path} failed (${res.status}): ${await res.text()}`);
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : ({} as T)) as T;
 }
 
 /** Fetch every page of a paginated list endpoint. */
@@ -139,6 +143,7 @@ async function rpcAdmin<T>(method: string, params: unknown[]): Promise<T> {
 /* --------------------------------- shapes --------------------------------- */
 
 interface SbClient {
+  registration_date?: string;
   id: number | string;
   name?: string;
   email?: string;
@@ -200,6 +205,7 @@ interface SbPackageInstance {
 }
 
 interface SbInvoiceLine {
+  price?: number | string;
   type?: string; // "booking" | "package" | "membership" | ...
   name?: string;
   object_name?: string;
@@ -268,7 +274,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
         email: c.email.toLowerCase(),
         membershipType: "Single Entry",
         membershipExpires: new Date(0).toISOString(), // inactive until a membership says otherwise
-        joinedAt: new Date().toISOString(),
+        joinedAt: c.registration_date ? studioToISO(c.registration_date) : new Date().toISOString(),
         qrCode: `RXM-${sbId}-${Math.floor(1000 + Math.random() * 9000)}`,
         simplybookId: sbId,
       } satisfies Member;
@@ -277,6 +283,11 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     } else {
       m.simplybookId = sbId;
       if (c.name) m.name = c.name;
+      // Back-date "member since" when SimplyBook knows they registered earlier
+      if (c.registration_date) {
+        const reg = studioToISO(c.registration_date);
+        if (new Date(reg).getTime() < new Date(m.joinedAt).getTime()) m.joinedAt = reg;
+      }
     }
   }
 
@@ -287,14 +298,29 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   const to = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   let bookings: SbBooking[] = [];
   let bookingSource = "none";
+  // Fetch in ~30-day chunks: a single wide call can be silently truncated by the
+  // API, which is what made lifetime class counts read low.
   try {
-    const rows = await rpcAdmin<SbBooking[]>("getBookings", [
-      { date_from: from, date_to: to, order: "start_date" },
-    ]);
-    if (Array.isArray(rows) && rows.length > 0) {
-      bookings = rows;
-      bookingSource = "JSON-RPC";
+    const seen = new Set<string>();
+    const startMs = new Date(`${from}T00:00:00`).getTime();
+    const endMs = new Date(`${to}T23:59:59`).getTime();
+    const CHUNK = 30 * 86400000;
+    let chunks = 0;
+    for (let cursor = startMs; cursor <= endMs && chunks < 60; cursor += CHUNK, chunks++) {
+      const cFrom = new Date(cursor).toISOString().slice(0, 10);
+      const cTo = new Date(Math.min(cursor + CHUNK - 86400000, endMs)).toISOString().slice(0, 10);
+      const rows = await rpcAdmin<SbBooking[]>("getBookings", [
+        { date_from: cFrom, date_to: cTo, order: "start_date" },
+      ]);
+      if (!Array.isArray(rows)) continue;
+      for (const r of rows) {
+        const key = String(r.id ?? `${r.client_id}-${r.start_date ?? r.start_datetime}`);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        bookings.push(r);
+      }
     }
+    if (bookings.length > 0) bookingSource = `JSON-RPC ×${chunks}`;
   } catch (e) {
     bookingSource = `rpc error: ${e instanceof Error ? e.message : "failed"}`;
   }
@@ -319,10 +345,14 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   for (const b of bookings) {
     const rawStart = b.start_datetime ?? b.start_date_time ?? b.start_date;
     if (!rawStart) continue;
+    // Confirmed-only: SimplyBook keeps cancelled rows in the feed (this account
+    // has ~60% cancellations), and counting them inflated lifetime class totals.
+    const statusText = (b.status || "").toLowerCase();
+    const confirmFlag = b.is_confirm ?? b.is_confirmed;
     const canceled =
-      (b.status || "").toLowerCase().includes("cancel") ||
-      b.is_confirmed === false || b.is_confirmed === 0 || b.is_confirmed === "0" ||
-      b.is_confirm === 0 || b.is_confirm === "0";
+      statusText.includes("cancel") ||
+      confirmFlag === false || confirmFlag === 0 || confirmFlag === "0" ||
+      (statusText !== "" && statusText !== "confirmed" && statusText !== "approved" && !statusText.includes("pend"));
     const clientObj = typeof b.client === "object" ? b.client : undefined;
     const clientId = String(b.client_id ?? clientObj?.id ?? "");
     const member =
@@ -339,7 +369,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     if (!member) continue;
 
     // upsert class (one row per service+start time)
-    const startsAt = new Date(rawStart.replace(" ", "T")).toISOString();
+    const startsAt = studioToISO(rawStart);
     const serviceId = b.service?.id ?? b.event_id ?? "x";
     const classKey = `c-sb-${serviceId}-${startsAt}`;
     let cls = db.classes.find((x) => x.id === classKey);
@@ -356,10 +386,12 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
         : b.event_duration
         ? Math.max(20, Number(b.event_duration) || 50)
         : rawEnd
-        ? Math.max(30, Math.round((new Date(rawEnd.replace(" ", "T")).getTime() - new Date(rawStart.replace(" ", "T")).getTime()) / 60000))
+        ? Math.max(30, Math.round((new Date(studioToISO(rawEnd)).getTime() - new Date(studioToISO(rawStart)).getTime()) / 60000))
         : 55;
       cls = {
         id: classKey,
+        serviceId: serviceId === "x" ? undefined : String(serviceId),
+        unitId: b.provider?.id ? String(b.provider.id) : b.unit_id ? String(b.unit_id) : undefined,
         title: b.service?.name || b.event || "Reformer Class",
         instructorId: instructor?.id ?? db.instructors[0].id,
         startsAt,
@@ -446,6 +478,86 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     if (rpcOk) membershipSource = `JSON-RPC (${list.length} clients checked)`;
   }
 
+  /* 3.4 — Real timetable. Bookings only reveal classes somebody already booked;
+     /admin/timeline/slots returns the published schedule, so the in-app class
+     list shows every session (including empty ones) with spots remaining. */
+  let timetableSlots = 0;
+  if (process.env.SIMPLYBOOK_SYNC_TIMETABLE !== "0") {
+    try {
+      const services = await sbAll<{
+        id: number; name: string; duration?: number; providers?: number[]; is_active?: boolean; is_visible?: boolean;
+      }>("/admin/services", 5);
+      let providers: Array<{ id: number; name: string }> = [];
+      try {
+        providers = await sbAll<{ id: number; name: string }>("/admin/providers", 5);
+      } catch {
+        /* names fall back to whatever bookings already taught us */
+      }
+      const tFrom = new Date().toISOString().slice(0, 10);
+      const tTo = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      let calls = 0;
+      for (const svc of services.filter((x) => x.is_active !== false)) {
+        const provIds: Array<number | undefined> = (svc.providers ?? []).length ? svc.providers! : [undefined];
+        for (const pid of provIds) {
+          if (calls >= 40) break;
+          calls++;
+          const q = new URLSearchParams({
+            service_id: String(svc.id),
+            date_from: tFrom,
+            date_to: tTo,
+            count: "1",
+            skip_min_max_restriction: "1",
+            with_available_slots: "1",
+          });
+          if (pid) q.set("provider_id", String(pid));
+          let days: Array<{ date?: string; slots?: Array<{ time?: string; available_count?: number; total_count?: number }> }> = [];
+          try {
+            days = await sb<typeof days>(`/admin/timeline/slots?${q.toString()}`);
+          } catch {
+            continue;
+          }
+          for (const day of days ?? []) {
+            for (const slot of day.slots ?? []) {
+              if (!day.date || !slot.time) continue;
+              const startsAt = studioToISO(`${day.date} ${slot.time.length === 5 ? `${slot.time}:00` : slot.time}`);
+              if (Number.isNaN(new Date(startsAt).getTime())) continue;
+              const classId = `c-sb-${svc.id}-${startsAt}`;
+              let instructorId: string | undefined;
+              if (pid) {
+                instructorId = `i-sb-${pid}`;
+                if (!db.instructors.some((i) => i.id === instructorId)) {
+                  const nm = providers.find((x) => Number(x.id) === Number(pid))?.name;
+                  db.instructors.push({ id: instructorId, name: nm || "ReformerX", role: "Instructor" });
+                }
+              }
+              const existing = db.classes.find((c) => c.id === classId);
+              if (existing) {
+                existing.spotsLeft = slot.available_count;
+                existing.serviceId = String(svc.id);
+                if (pid) existing.unitId = String(pid);
+                if (instructorId && !existing.instructorId) existing.instructorId = instructorId;
+              } else {
+                db.classes.push({
+                  id: classId,
+                  title: svc.name || "Reformer Class",
+                  instructorId: instructorId ?? db.instructors[0]?.id ?? "i-karolina",
+                  startsAt,
+                  durationMin: svc.duration && svc.duration > 0 ? svc.duration : 50,
+                  serviceId: String(svc.id),
+                  unitId: pid ? String(pid) : undefined,
+                  spotsLeft: slot.available_count,
+                });
+                timetableSlots++;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      /* timetable is a bonus — never fail the sync over it */
+    }
+  }
+
   /* 3.5 — Passes sold as SimplyBook Packages. Verified on this account:
      purchases appear as PAID invoice lines with type "package", carrying the
      product name and validity window in description_string, e.g.
@@ -454,14 +566,18 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
      Default window: 60 days per sync (fast, catches new purchases).
      Set SIMPLYBOOK_SCAN_INVOICES=1 once for a 400-day backfill. */
   let packagePasses = 0;
+  const catalog = new Map<string, NonNullable<DB["packages"]>[number]>();
+  // Best (latest-ending) real pass per member. Applied after the scan so it
+  // overrides any activity-derived estimate, even when it ends sooner.
+  const bestPass = new Map<string, { end: Date; start?: string; name?: string; credits?: number }>();
   if (membershipRows === 0) {
     try {
       const backfill = process.env.SIMPLYBOOK_SCAN_INVOICES === "1";
-      const invDays = backfill ? 400 : 30;
+      const invDays = backfill ? 400 : 120;
       const invFrom = new Date(Date.now() - invDays * 86400000).toISOString().slice(0, 10);
       const invoices = await sbAll<SbInvoice>(
         `/admin/invoices?filter[datetime_from]=${invFrom}`,
-        backfill ? 60 : 6
+        backfill ? 60 : 16
       );
       const period = /\((\d{2})-(\d{2})-(\d{4})\s*-\s*(\d{2})-(\d{2})-(\d{4})\)/;
       const namePrefix = /^[^:]{0,30}:\s*(.+?)\s*\(/;
@@ -480,14 +596,56 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
           else if (line.period_start) end = new Date(new Date(`${line.period_start}T00:00:00`).getTime() + 31 * 86400000);
           if (!end || Number.isNaN(end.getTime())) continue;
           const productName = namePrefix.exec(desc)?.[1] || line.name || line.object_name;
-          if (end.getTime() > new Date(m.membershipExpires).getTime()) {
-            m.membershipExpires = end.toISOString();
-            m.membershipType = mapMembershipType(productName);
+          const prev = bestPass.get(m.id);
+          if (!prev || end.getTime() > prev.end.getTime()) {
+            const creditMatch = productName ? /(\d+)\s*(?:x|classes|lekc|vstup)/i.exec(productName) : null;
+            bestPass.set(m.id, {
+              end,
+              start: pm
+                ? new Date(`${pm[3]}-${pm[2]}-${pm[1]}T00:00:00`).toISOString()
+                : line.period_start
+                ? studioToISO(`${line.period_start} 00:00:00`)
+                : undefined,
+              name: productName?.trim() || undefined,
+              credits: creditMatch ? Number(creditMatch[1]) : undefined,
+            });
           }
           packagePasses++;
+
+          // Catalogue the product so the in-app store can show real passes
+          if (productName) {
+            const price = typeof line.price === "number" ? line.price : Number(line.price ?? 0);
+            const pkgId = `pkg-${line.package_id ?? productName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+            const known = catalog.get(pkgId);
+            const days = pm ? Math.round((end.getTime() - new Date(`${pm[3]}-${pm[2]}-${pm[1]}T00:00:00`).getTime()) / 86400000) : undefined;
+            if (!known || (price > 0 && known.price === 0)) {
+              catalog.set(pkgId, {
+                id: pkgId,
+                name: productName,
+                price: price || known?.price || 0,
+                currency: "CZK",
+                validityDays: days && days > 0 ? days : known?.validityDays,
+                classes: /(\d+)\s*(?:x|classes|lekc)/i.exec(productName) ? Number(/(\d+)/.exec(productName)![1]) : known?.classes,
+              });
+            }
+          }
         }
       }
+      for (const [memberId, pass] of Array.from(bestPass.entries())) {
+        const m = db.members.find((x) => x.id === memberId);
+        if (!m) continue;
+        m.membershipExpires = pass.end.toISOString(); // authoritative, even if earlier
+        m.membershipType = mapMembershipType(pass.name);
+        m.passName = pass.name;
+        m.passStart = pass.start;
+        m.passCredits = pass.credits;
+      }
       membershipSource = `invoice package lines (${invoices.length} invoices, ${invDays}d window)`;
+      if (catalog.size > 0) {
+        const merged = new Map((db.packages ?? []).map((p) => [p.id, p]));
+        for (const [k, v] of Array.from(catalog.entries())) merged.set(k, v);
+        db.packages = Array.from(merged.values()).sort((a, b) => a.price - b.price);
+      }
     } catch (e) {
       membershipSource = `invoice scan error: ${e instanceof Error ? e.message : "failed"}`;
     }
@@ -516,12 +674,19 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     for (const [cid, latest] of Array.from(latestByClient.entries())) {
       const m = db.members.find((x) => x.simplybookId === cid);
       if (!m) continue;
+
+      // A genuine pass (from SimplyBook) is authoritative — never stretch its
+      // expiry with a booking-activity estimate, even when the pass ends sooner.
+      const pass = bestPass.get(m.id);
+      const hasRealPass = Boolean(pass && pass.end.getTime() > Date.now());
+      if (new Date(m.joinedAt).getTime() > latest) m.joinedAt = new Date(latest).toISOString();
+      if (hasRealPass) continue;
+
       const derived = latest + 45 * 86400000;
       if (derived > Date.now() && derived > new Date(m.membershipExpires).getTime()) {
-        const hadRealPass = new Date(m.membershipExpires).getTime() > new Date("2000-01-01").getTime() && m.membershipType !== "Member";
         m.membershipExpires = new Date(derived).toISOString();
-        if (new Date(m.joinedAt).getTime() > latest) m.joinedAt = new Date(latest).toISOString();
-        if (!hadRealPass) m.membershipType = "Member";
+        m.membershipType = "Member";
+        m.passName = undefined;
         activityMembers++;
       }
     }
@@ -531,9 +696,73 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   return {
     ok: true,
-    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d]${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
+    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,
   };
+}
+
+/* ----------------------------- booking writes -----------------------------
+   Creating real reservations in SimplyBook. Disabled unless
+   SIMPLYBOOK_ALLOW_BOOKING=1, so nothing writes to the studio's live calendar
+   until the call has been verified against this account (scripts/sb-probe3.mjs).
+   Until then the app deep-links members to the SimplyBook booking page.       */
+
+export function inAppBookingEnabled(): boolean {
+  return process.env.SIMPLYBOOK_ALLOW_BOOKING === "1" && simplybookConfigured();
+}
+
+/** Public booking page for a service, used as the fallback "Reserve" target. */
+export function simplybookBookingUrl(serviceId?: string, startsAt?: string): string {
+  const base = (process.env.NEXT_PUBLIC_SIMPLYBOOK_BOOKING_URL ?? "https://rezervace.reformerx.cz/v2/").replace(/\/$/, "");
+  const date = startsAt ? new Date(startsAt).toISOString().slice(0, 10) : "";
+  if (serviceId) return `${base}/#book/service/${serviceId}${date ? `/date/${date}` : ""}`;
+  return `${base}/#book`;
+}
+
+export function simplybookPackagesUrl(): string {
+  const base = (process.env.NEXT_PUBLIC_SIMPLYBOOK_BOOKING_URL ?? "https://rezervace.reformerx.cz/v2/").replace(/\/$/, "");
+  return `${base}/#packages`;
+}
+
+export async function createSimplybookBooking(opts: {
+  clientId: string;
+  serviceId: string;
+  unitId?: string;
+  startsAt: string;
+  durationMin?: number;
+}): Promise<{ ok: boolean; id?: string; message: string }> {
+  if (!inAppBookingEnabled()) return { ok: false, message: "In-app booking is not enabled." };
+  const fmt = (d: Date) => isoToStudioString(d.toISOString());
+  const start = new Date(opts.startsAt);
+  const end = new Date(start.getTime() + (opts.durationMin ?? 50) * 60000);
+  try {
+    // POST /admin/bookings — AdminBookingBuildEntity
+    const res = await sb<{ id?: number | string; bookings?: Array<{ id?: number | string }> }>("/admin/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        start_datetime: fmt(start),
+        end_datetime: fmt(end),
+        service_id: Number(opts.serviceId),
+        provider_id: opts.unitId ? Number(opts.unitId) : undefined,
+        client_id: Number(opts.clientId),
+        count: 1,
+      }),
+    });
+    const id = res?.id ?? res?.bookings?.[0]?.id;
+    return { ok: true, id: id ? String(id) : undefined, message: "Reserved." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Booking failed." };
+  }
+}
+
+export async function cancelSimplybookBooking(bookingId: string): Promise<{ ok: boolean; message: string }> {
+  if (!inAppBookingEnabled()) return { ok: false, message: "In-app booking is not enabled." };
+  try {
+    await sb(`/admin/bookings/${encodeURIComponent(bookingId)}`, { method: "DELETE" });
+    return { ok: true, message: "Cancelled." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Cancel failed." };
+  }
 }

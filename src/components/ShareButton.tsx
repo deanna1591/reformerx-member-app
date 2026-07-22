@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 
-export default function ShareButton({ text, label = "Share" }: { text: string; label?: string }) {
+export default function ShareButton({
+  text,
+  label = "Share",
+  variant = "light",
+}: {
+  text: string;
+  label?: string;
+  variant?: "light" | "dark";
+}) {
   const [copied, setCopied] = useState(false);
 
   const share = async () => {
@@ -22,7 +30,14 @@ export default function ShareButton({ text, label = "Share" }: { text: string; l
   };
 
   return (
-    <button onClick={share} className="rounded-full border border-line bg-white px-3 py-1.5 text-[12px] font-semibold active:scale-95">
+    <button
+      onClick={share}
+      className={`rounded-full px-4 py-2 text-[12px] font-semibold transition active:scale-95 ${
+        variant === "dark"
+          ? "bg-white text-ink"
+          : "border border-line bg-white text-ink"
+      }`}
+    >
       {copied ? "Copied ✓" : `↗ ${label}`}
     </button>
   );

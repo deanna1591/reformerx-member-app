@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/", label: "Home", icon: "M3 10.5 12 3l9 7.5M5 9.5V21h5v-6h4v6h5V9.5" },
-  { href: "/challenges", label: "Challenges", icon: "M8 21h8m-4-4v4M6 3h12v5a6 6 0 0 1-12 0V3Zm12 2h3a3 3 0 0 1-3 4M6 5H3a3 3 0 0 0 3 4" },
+  { href: "/schedule", label: "Book", icon: "M8 2v3m8-3v3M3.5 9h17M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" },
   { href: "/checkin", label: "", icon: "" },
   { href: "/rewards", label: "Rewards", icon: "M12 8v13m-8-9h16M4 8h16v4H4V8Zm4 0a3 3 0 1 1 4-3c0 1.5-1 3-4 3Zm8 0a3 3 0 1 0-4-3c0 1.5 1 3 4 3ZM5 12v9h14v-9" },
   { href: "/profile", label: "Profile", icon: "M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm-8 9a8 8 0 0 1 16 0" },

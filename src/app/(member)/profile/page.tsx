@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtDate, fmtTime, membershipActive, memberStats, personalRecords } from "@/lib/engine";
+import { fmtDate, fmtTime, membershipActive, memberStats, personalRecords, passUsage } from "@/lib/engine";
 import QRDisplay from "@/components/QRDisplay";
 import { memberLogout } from "@/app/actions";
 import PushOptIn from "@/components/PushOptIn";
@@ -17,6 +17,7 @@ export default async function ProfilePage() {
   const stats = memberStats(member.id);
   const records = personalRecords(member.id);
   const active = membershipActive(member);
+  const pass = passUsage(member.id);
 
   const badges = db.earnedBadges
     .filter((b) => b.memberId === member.id)
@@ -39,6 +40,26 @@ export default async function ProfilePage() {
 
   return (
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
+      {/* Membership + quick links */}
+      <div className="mb-4 rounded-xl2 bg-ink p-5 text-white shadow-card">
+        <p className="text-[11px] uppercase tracking-wider text-white/55">Membership</p>
+        <p className="mt-1 font-display text-[24px] leading-none">
+          {active ? member.membershipType : "No active pass"}
+        </p>
+        <p className="mt-1.5 text-[13px] text-white/70">
+          {active ? `Valid until ${fmtDate(member.membershipExpires)}` : "Buy a pass to book classes."}
+        </p>
+        <a href="/store" className="mt-3 inline-block rounded-full bg-sage px-4 py-2 text-[12px] font-semibold text-ink">
+          {active ? "Renew or upgrade" : "Get a pass"}
+        </a>
+      </div>
+
+      <div className="mb-5 grid grid-cols-3 gap-2">
+        <a href="/schedule" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Book</a>
+        <a href="/milestones" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Milestones</a>
+        <a href="/settings" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Settings</a>
+      </div>
+
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-smoke">Member since {fmtDate(member.joinedAt)}</p>
@@ -97,6 +118,7 @@ export default async function ProfilePage() {
           <p className="font-display text-[18px] tracking-wide">{member.qrCode}</p>
           <ShareButton
             label="Invite"
+            variant="dark"
             text={`Join me at ReformerX (Prague 1)! Use my member code ${member.qrCode} when you sign in to the app. 🤸`}
           />
         </div>

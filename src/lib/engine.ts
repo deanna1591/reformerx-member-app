@@ -1,4 +1,5 @@
 import { getDB, saveDB } from "./store";
+import { STUDIO_TZ } from "./time";
 import { Challenge, CheckIn, Member } from "./types";
 
 const WINDOW_MIN = 30; // minutes before start / after end
@@ -121,16 +122,42 @@ export function recordAttendance(memberId: string, classId: string) {
   return { checkIn, completedChallenges, earnedRewards, newBadges };
 }
 
+/** Every class a member has actually taken: past confirmed SimplyBook bookings
+ *  plus app QR check-ins, de-duplicated by class and sorted oldest first.
+ *  This is the single source of truth for stats, streaks, milestones and
+ *  challenge progress — so members see their real history from day one,
+ *  not just what happened after the app launched. */
+export function attendedClasses(memberId: string): Array<{ classId: string; at: string; scanned: boolean }> {
+  const db = getDB();
+  const now = Date.now();
+  const byClass = new Map<string, { classId: string; at: string; scanned: boolean }>();
+
+  for (const b of db.bookings) {
+    if (b.memberId !== memberId) continue;
+    const c = db.classes.find((x) => x.id === b.classId);
+    if (!c) continue;
+    const t = new Date(c.startsAt).getTime();
+    if (t >= now) continue; // not taken yet
+    byClass.set(c.id, { classId: c.id, at: c.startsAt, scanned: false });
+  }
+  for (const ci of db.checkIns) {
+    if (ci.memberId !== memberId) continue;
+    const c = db.classes.find((x) => x.id === ci.classId);
+    byClass.set(ci.classId, { classId: ci.classId, at: c?.startsAt ?? ci.at, scanned: true });
+  }
+  return Array.from(byClass.values()).sort((a, b) => +new Date(a.at) - +new Date(b.at));
+}
+
 export function computeProgress(memberId: string, ch: Challenge): number {
   const db = getDB();
-  const mine = db.checkIns.filter((ci) => ci.memberId === memberId);
+  const mine = attendedClasses(memberId);
 
   switch (ch.type) {
     case "class_count": {
       const s = ch.startDate ? new Date(ch.startDate).getTime() : -Infinity;
       const e = ch.endDate ? new Date(ch.endDate).getTime() : Infinity;
-      return mine.filter((ci) => {
-        const t = new Date(ci.at).getTime();
+      return mine.filter((a) => {
+        const t = new Date(a.at).getTime();
         return t >= s && t <= e;
       }).length;
     }
@@ -138,9 +165,7 @@ export function computeProgress(memberId: string, ch: Challenge): number {
       return mine.length;
     case "instructor_variety": {
       const ids = new Set(
-        mine
-          .map((ci) => db.classes.find((c) => c.id === ci.classId)?.instructorId)
-          .filter(Boolean)
+        mine.map((a) => db.classes.find((c) => c.id === a.classId)?.instructorId).filter(Boolean)
       );
       return ids.size;
     }
@@ -148,14 +173,14 @@ export function computeProgress(memberId: string, ch: Challenge): number {
       return currentStreak(memberId);
     case "monthly_count": {
       const now = new Date();
-      return mine.filter((ci) => {
-        const d = new Date(ci.at);
+      return mine.filter((a) => {
+        const d = new Date(a.at);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       }).length;
     }
     case "referrals":
       return db.members.filter(
-        (m) => m.referredBy === memberId && db.checkIns.some((ci) => ci.memberId === m.id)
+        (m) => m.referredBy === memberId && attendedClasses(m.id).length > 0
       ).length;
   }
 }
@@ -163,12 +188,10 @@ export function computeProgress(memberId: string, ch: Challenge): number {
 /** All-time bests for the profile "Personal records" section. */
 export function personalRecords(memberId: string) {
   const db = getDB();
-  const mine = db.checkIns
-    .filter((ci) => ci.memberId === memberId)
-    .sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  const mine = attendedClasses(memberId);
 
   // longest streak ever
-  const days = Array.from(new Set(mine.map((ci) => new Date(ci.at).setHours(0, 0, 0, 0)))).sort((a, b) => a - b);
+  const days = Array.from(new Set(mine.map((a) => new Date(a.at).setHours(0, 0, 0, 0)))).sort((a, b) => a - b);
   let longest = 0, run = 0, prev = 0;
   for (const d of days) {
     run = prev && d - prev === 86400000 ? run + 1 : 1;
@@ -178,8 +201,8 @@ export function personalRecords(memberId: string) {
 
   // best month
   const byMonth: Record<string, number> = {};
-  for (const ci of mine) {
-    const d = new Date(ci.at);
+  for (const a of mine) {
+    const d = new Date(a.at);
     const k = `${d.getFullYear()}-${d.getMonth()}`;
     byMonth[k] = (byMonth[k] ?? 0) + 1;
   }
@@ -189,7 +212,7 @@ export function personalRecords(memberId: string) {
     : null;
 
   const earliest = mine
-    .map((ci) => db.classes.find((c) => c.id === ci.classId))
+    .map((a) => db.classes.find((c) => c.id === a.classId))
     .filter(Boolean)
     .sort((a, b) => new Date(a!.startsAt).getHours() * 60 + new Date(a!.startsAt).getMinutes() - (new Date(b!.startsAt).getHours() * 60 + new Date(b!.startsAt).getMinutes()))[0];
 
@@ -203,12 +226,7 @@ export function personalRecords(memberId: string) {
 }
 
 export function currentStreak(memberId: string): number {
-  const db = getDB();
-  const days = new Set(
-    db.checkIns
-      .filter((ci) => ci.memberId === memberId)
-      .map((ci) => new Date(ci.at).toDateString())
-  );
+  const days = new Set(attendedClasses(memberId).map((a) => new Date(a.at).toDateString()));
   let streak = 0;
   const d = new Date();
   // streak counts today if attended, otherwise starts from yesterday
@@ -277,14 +295,8 @@ export function notify(memberId: string, text: string) {
 export function memberActivity(memberId: string) {
   const db = getDB();
   const now = Date.now();
-  const attendedClassIds = new Set<string>();
-  for (const b of db.bookings) {
-    if (b.memberId !== memberId) continue;
-    const c = db.classes.find((x) => x.id === b.classId);
-    if (c && new Date(c.startsAt).getTime() < now) attendedClassIds.add(c.id);
-  }
+  const attended = attendedClasses(memberId);
   const mine = db.checkIns.filter((ci) => ci.memberId === memberId);
-  for (const ci of mine) attendedClassIds.add(ci.classId);
 
   const progress = db.challengeProgress.filter((p) => p.memberId === memberId);
   const rewards = db.earnedRewards.filter((r) => r.memberId === memberId);
@@ -295,7 +307,7 @@ export function memberActivity(memberId: string) {
   }).length;
 
   return {
-    attended: attendedClassIds.size,
+    attended: attended.length,
     checkIns: mine.length,
     challengesJoined: progress.length,
     challengesCompleted: progress.filter((p) => p.completedAt).length,
@@ -305,30 +317,77 @@ export function memberActivity(memberId: string) {
   };
 }
 
+/** What the member's current pass is, and how much of it they've used. */
+export function passUsage(memberId: string) {
+  const db = getDB();
+  const m = db.members.find((x) => x.id === memberId);
+  if (!m) return null;
+
+  const active = membershipActive(m);
+  const name = m.passName ?? (m.membershipType === "Member" ? "Studio member" : m.membershipType);
+  const end = new Date(m.membershipExpires);
+  const start = m.passStart ? new Date(m.passStart) : null;
+  const unlimited = /unlimit|neomezen/i.test(name);
+  const credits = m.passCredits ?? (m.membershipType === "Package 10" ? 10 : undefined);
+
+  // Classes taken inside the current pass period
+  const from = start ? start.getTime() : new Date(end.getTime() - 30 * 86400000).getTime();
+  const used = attendedClasses(memberId).filter((a) => {
+    const t = new Date(a.at).getTime();
+    return t >= from && t <= end.getTime();
+  }).length;
+
+  const daysLeft = Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400000));
+  const totalDays = start ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000)) : null;
+  const daysUsed = totalDays ? Math.max(0, Math.min(totalDays, totalDays - daysLeft)) : null;
+
+  return {
+    active,
+    name,
+    start: start?.toISOString() ?? null,
+    end: m.membershipExpires,
+    unlimited,
+    credits,
+    used,
+    remaining: credits ? Math.max(0, credits - used) : null,
+    daysLeft,
+    totalDays,
+    daysUsed,
+    /** One line a member instantly understands. */
+    summary: !active
+      ? "No active pass"
+      : credits
+      ? `${used} of ${credits} classes used`
+      : unlimited && totalDays
+      ? `${used} ${used === 1 ? "class" : "classes"} · day ${Math.min(totalDays, (daysUsed ?? 0) + 1)} of ${totalDays}`
+      : `${used} ${used === 1 ? "class" : "classes"} this pass`,
+  };
+}
+
 export function memberStats(memberId: string) {
   const db = getDB();
-  const mine = db.checkIns.filter((ci) => ci.memberId === memberId);
+  const mine = attendedClasses(memberId);
   const total = mine.length;
   const hours = Math.round(
-    mine.reduce((acc, ci) => {
-      const c = db.classes.find((x) => x.id === ci.classId);
+    mine.reduce((acc, a) => {
+      const c = db.classes.find((x) => x.id === a.classId);
       return acc + (c ? c.durationMin : 50);
     }, 0) / 60
   );
   const instructorCounts: Record<string, number> = {};
   const hourCounts: Record<number, number> = {};
-  for (const ci of mine) {
-    const c = db.classes.find((x) => x.id === ci.classId);
+  for (const a of mine) {
+    const c = db.classes.find((x) => x.id === a.classId);
     if (!c) continue;
     instructorCounts[c.instructorId] = (instructorCounts[c.instructorId] ?? 0) + 1;
-    const h = new Date(c.startsAt).getHours();
+    const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: STUDIO_TZ, hour: "2-digit", hour12: false }).format(new Date(c.startsAt)));
     hourCounts[h] = (hourCounts[h] ?? 0) + 1;
   }
   const favInstructorId = Object.entries(instructorCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
   const favInstructor = db.instructors.find((i) => i.id === favInstructorId)?.name ?? "—";
   const favHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const thisMonth = mine.filter((ci) => {
-    const d = new Date(ci.at);
+  const thisMonth = mine.filter((a) => {
+    const d = new Date(a.at);
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
@@ -373,8 +432,17 @@ export function leaderboard(challengeId?: string) {
 }
 
 export function fmtDate(isoStr: string) {
-  return new Date(isoStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(isoStr).toLocaleDateString("en-GB", {
+    timeZone: STUDIO_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 export function fmtTime(isoStr: string) {
-  return new Date(isoStr).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return new Date(isoStr).toLocaleTimeString("en-GB", {
+    timeZone: STUDIO_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
