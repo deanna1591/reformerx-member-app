@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ensureDB } from "@/lib/store";
 import { simplybookConfigured, syncFromSimplybook } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const maxDuration = 60;
  * forged webhook can't inject anything.
  */
 export async function POST(req: NextRequest) {
+  await ensureDB();
   if (!simplybookConfigured()) {
     return NextResponse.json({ ok: false, error: "SimplyBook not configured" }, { status: 503 });
   }
@@ -35,6 +37,7 @@ export async function POST(req: NextRequest) {
 
 /** Health check so you can verify the URL in a browser after deploying. */
 export async function GET() {
+  await ensureDB();
   return NextResponse.json({
     ok: true,
     endpoint: "SimplyBook webhook",

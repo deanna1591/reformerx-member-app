@@ -3,13 +3,14 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getDB, saveDB, resetDB } from "@/lib/store";
+import { getDB, saveDB, ensureDB, resetDB } from "@/lib/store";
 import { performCheckIn, notify, CheckInResult } from "@/lib/engine";
 import { Member, Challenge } from "@/lib/types";
 
 /* ---------- auth ---------- */
 
 export async function memberLogin(formData: FormData) {
+  await ensureDB();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const db = getDB();
   const member = db.members.find((m) => m.email.toLowerCase() === email);
@@ -31,6 +32,7 @@ export async function memberLogin(formData: FormData) {
 }
 
 export async function savePushSubscription(sub: unknown) {
+  await ensureDB();
   const memberId = cookies().get("rx_member")?.value;
   if (!memberId) return;
   const db = getDB();
@@ -43,11 +45,13 @@ export async function savePushSubscription(sub: unknown) {
 }
 
 export async function memberLogout() {
+  await ensureDB();
   cookies().delete("rx_member");
   redirect("/login");
 }
 
 export async function adminLogin(formData: FormData) {
+  await ensureDB();
   const password = String(formData.get("password") ?? "");
   const expected = process.env.ADMIN_PASSWORD ?? "reformerx";
   if (password !== expected) redirect("/admin/login?error=1");
@@ -56,6 +60,7 @@ export async function adminLogin(formData: FormData) {
 }
 
 export async function adminLogout() {
+  await ensureDB();
   cookies().delete("rx_admin");
   redirect("/admin/login");
 }
@@ -63,6 +68,7 @@ export async function adminLogout() {
 /* ---------- member actions ---------- */
 
 export async function checkInAction(code: string): Promise<CheckInResult> {
+  await ensureDB();
   const memberId = cookies().get("rx_member")?.value;
   if (!memberId)
     return { ok: false, message: "Please sign in first.", completedChallenges: [], earnedRewards: [], newBadges: [] };
@@ -78,6 +84,7 @@ export async function checkInAction(code: string): Promise<CheckInResult> {
 }
 
 export async function joinChallenge(challengeId: string) {
+  await ensureDB();
   const memberId = cookies().get("rx_member")?.value;
   if (!memberId) return;
   const db = getDB();
@@ -99,6 +106,7 @@ export async function joinChallenge(challengeId: string) {
 }
 
 export async function markNotificationsRead() {
+  await ensureDB();
   const memberId = cookies().get("rx_member")?.value;
   if (!memberId) return;
   const db = getDB();
@@ -116,6 +124,7 @@ function requireAdmin() {
 }
 
 export async function createChallenge(formData: FormData) {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   const ch: Challenge = {
@@ -141,6 +150,7 @@ export async function createChallenge(formData: FormData) {
 }
 
 export async function toggleChallenge(challengeId: string) {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   const ch = db.challenges.find((c) => c.id === challengeId);
@@ -150,6 +160,7 @@ export async function toggleChallenge(challengeId: string) {
 }
 
 export async function setRewardStatus(rewardId: string, status: "ready" | "collected" | "declined") {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   const er = db.earnedRewards.find((r) => r.id === rewardId);
@@ -171,6 +182,7 @@ export async function setRewardStatus(rewardId: string, status: "ready" | "colle
 }
 
 export async function updateMembership(memberId: string, formData: FormData) {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   const m = db.members.find((x) => x.id === memberId);
@@ -185,6 +197,7 @@ export async function updateMembership(memberId: string, formData: FormData) {
 }
 
 export async function extendMembership(memberId: string, days: number) {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   const m = db.members.find((x) => x.id === memberId);
@@ -198,6 +211,7 @@ export async function extendMembership(memberId: string, days: number) {
 }
 
 export async function sendMemberMessage(memberId: string, formData: FormData) {
+  await ensureDB();
   requireAdmin();
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return;
@@ -209,6 +223,7 @@ export async function sendMemberMessage(memberId: string, formData: FormData) {
 }
 
 export async function adminCheckIn(memberId: string, formData: FormData) {
+  await ensureDB();
   requireAdmin();
   const classId = String(formData.get("classId") ?? "");
   if (!classId) return;
@@ -228,6 +243,7 @@ export async function adminCheckIn(memberId: string, formData: FormData) {
 }
 
 export async function sendAnnouncement(formData: FormData) {
+  await ensureDB();
   requireAdmin();
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return;
@@ -240,6 +256,7 @@ export async function sendAnnouncement(formData: FormData) {
 }
 
 export async function toggleLeaderboards() {
+  await ensureDB();
   requireAdmin();
   const db = getDB();
   db.settings.leaderboardsEnabled = !db.settings.leaderboardsEnabled;
@@ -248,6 +265,7 @@ export async function toggleLeaderboards() {
 }
 
 export async function simulateSimplybookSync() {
+  await ensureDB();
   requireAdmin();
   const { simplybookConfigured, syncFromSimplybook } = await import("@/lib/simplybook");
   const db = getDB();
@@ -282,6 +300,7 @@ export async function simulateSimplybookSync() {
 }
 
 export async function resetDemoData() {
+  await ensureDB();
   requireAdmin();
   resetDB();
   revalidatePath("/", "layout");

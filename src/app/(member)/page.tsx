@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive } from "@/lib/engine";
 import CarriageProgress from "@/components/CarriageProgress";
 import { markNotificationsRead } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
+  await ensureDB();
   const member = currentMember();
   if (!member) redirect("/login");
   const db = getDB();

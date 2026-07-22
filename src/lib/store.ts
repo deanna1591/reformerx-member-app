@@ -297,6 +297,71 @@ function seed(): DB {
 declare global {
   // eslint-disable-next-line no-var
   var __rxdb: DB | undefined;
+  // eslint-disable-next-line no-var
+  var __rxdbLoadedAt: number | undefined;
+}
+
+/* ---------------- Supabase persistence (server-only, service role) ----------------
+   The whole store is persisted as one JSON document in the app_state table.
+   No SDK needed — plain PostgREST calls. When SUPABASE_URL/KEY are absent
+   (local dev), the store falls back to .data/db.json exactly as before.      */
+
+const SUPA_URL = (process.env.SUPABASE_URL ?? "").trim().replace(/\/$/, "");
+const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+const hasSupabase = SUPA_URL.length > 0 && SUPA_KEY.length > 0;
+const REFRESH_MS = 30_000; // re-read from Supabase when cache is older than this
+
+function supaHeaders() {
+  return {
+    apikey: SUPA_KEY,
+    Authorization: `Bearer ${SUPA_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function supaLoad(): Promise<DB | null> {
+  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?key=eq.db&select=value`, {
+    headers: supaHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Supabase load failed: ${res.status}`);
+  const rows = (await res.json()) as Array<{ value: DB }>;
+  return rows[0]?.value ?? null;
+}
+
+async function supaSave(db: DB): Promise<void> {
+  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?on_conflict=key`, {
+    method: "POST",
+    headers: { ...supaHeaders(), Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify([{ key: "db", value: db, updated_at: new Date().toISOString() }]),
+  });
+  if (!res.ok) throw new Error(`Supabase save failed: ${res.status} ${await res.text().catch(() => "")}`);
+}
+
+/** Await this at the top of every page/action/route before using getDB(). */
+export async function ensureDB(): Promise<DB> {
+  const fresh = globalThis.__rxdb && Date.now() - (globalThis.__rxdbLoadedAt ?? 0) < REFRESH_MS;
+  if (fresh) return globalThis.__rxdb!;
+  if (hasSupabase) {
+    try {
+      const remote = await supaLoad();
+      if (remote) {
+        globalThis.__rxdb = remote;
+        globalThis.__rxdbLoadedAt = Date.now();
+        return remote;
+      }
+      // First run against an empty database: seed it
+      const seeded = globalThis.__rxdb ?? seed();
+      globalThis.__rxdb = seeded;
+      globalThis.__rxdbLoadedAt = Date.now();
+      await supaSave(seeded);
+      return seeded;
+    } catch (e) {
+      console.error("[store] Supabase unavailable, using local cache:", e);
+      // fall through to local behavior so the app stays up
+    }
+  }
+  return getDB();
 }
 
 export function getDB(): DB {
@@ -304,12 +369,14 @@ export function getDB(): DB {
   try {
     if (fs.existsSync(DATA_FILE)) {
       globalThis.__rxdb = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as DB;
+      globalThis.__rxdbLoadedAt = Date.now();
       return globalThis.__rxdb;
     }
   } catch {
     /* fall through to seed */
   }
   globalThis.__rxdb = seed();
+  globalThis.__rxdbLoadedAt = Date.now();
   saveDB();
   return globalThis.__rxdb;
 }
@@ -319,7 +386,11 @@ export function saveDB() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(globalThis.__rxdb, null, 2));
   } catch {
-    /* read-only environments: keep in memory */
+    /* read-only environments (Vercel): Supabase is the real store there */
+  }
+  if (hasSupabase && globalThis.__rxdb) {
+    globalThis.__rxdbLoadedAt = Date.now(); // our copy is the newest
+    void supaSave(globalThis.__rxdb).catch((e) => console.error("[store] save failed:", e));
   }
 }
 

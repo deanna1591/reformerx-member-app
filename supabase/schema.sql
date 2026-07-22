@@ -1,67 +1,68 @@
--- ReformerX Member App — production schema for Supabase (PostgreSQL)
--- Run in the Supabase SQL editor. Pairs with Supabase Auth: members.id = auth.users.id
+-- ReformerX Member App — production schema (matches the app store 1:1)
+-- Run once in the Supabase SQL editor.
+-- Access model: the Next.js server talks to this database with the service-role
+-- key only. RLS is enabled with no public policies, so nothing is readable from
+-- browsers — every table is deny-all except for the server.
 
-create extension if not exists "uuid-ossp";
-
--- ============ Core tables ============
+-- ============ Core ============
 
 create table members (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id text primary key,                      -- "m-sb-303", "m-you", ...
   name text not null,
-  email text not null unique,
-  membership_type text not null default 'Single Entry',
-  membership_expires timestamptz,
+  email text not null,
+  qr_code text not null unique,             -- doubles as referral code
+  membership_type text not null default 'Member',
+  membership_expires timestamptz not null default 'epoch',
   joined_at timestamptz not null default now(),
-  qr_code text not null unique default ('RXM-' || upper(substr(uuid_generate_v4()::text, 1, 8))),
   simplybook_id text unique,
-  referred_by uuid references members(id)
+  referred_by text references members(id),
+  avatar_color text
 );
 
 create table instructors (
-  id uuid primary key default uuid_generate_v4(),
+  id text primary key,                      -- "i-sb-6"
   name text not null,
   role text
 );
 
 create table classes (
-  id uuid primary key default uuid_generate_v4(),
+  id text primary key,                      -- "c-sb-<service>-<iso>"
   title text not null,
-  instructor_id uuid references instructors(id),
+  instructor_id text references instructors(id),
   starts_at timestamptz not null,
-  duration_min int not null default 50,
-  wordpress_event_id text -- link back to the WP booking system during Phase 1
+  duration_min int not null default 50
 );
 
 create table bookings (
-  id uuid primary key default uuid_generate_v4(),
-  member_id uuid not null references members(id) on delete cascade,
-  class_id uuid not null references classes(id) on delete cascade,
-  source text not null default 'wordpress',
+  id text primary key,                      -- "b-sb-<id>"
+  member_id text not null references members(id) on delete cascade,
+  class_id text not null references classes(id) on delete cascade,
+  source text not null default 'simplybook',
+  canceled boolean not null default false,
   unique (member_id, class_id)
 );
 
 create table check_ins (
-  id uuid primary key default uuid_generate_v4(),
-  member_id uuid not null references members(id) on delete cascade,
-  class_id uuid not null references classes(id) on delete cascade,
+  id text primary key,
+  member_id text not null references members(id) on delete cascade,
+  class_id text not null references classes(id) on delete cascade,
   at timestamptz not null default now(),
-  unique (member_id, class_id) -- once per class, enforced by the database itself
+  unique (member_id, class_id)              -- once per class, enforced by the DB
 );
 
 -- ============ Gamification ============
 
-create type challenge_type as enum ('class_count', 'streak_days', 'instructor_variety', 'lifetime_count');
-
 create table challenges (
-  id uuid primary key default uuid_generate_v4(),
+  id text primary key,
   name text not null,
   emoji text default '🏆',
   description text,
-  type challenge_type not null,
+  type text not null check (type in ('class_count','streak_days','instructor_variety','lifetime_count','referrals','monthly_count')),
   goal int not null,
   start_date timestamptz,
   end_date timestamptz,
-  reward text,
+  reward text not null default '',
+  reward_emoji text default '🎁',
   spring_color text default 'red',
   leaderboard boolean not null default false,
   active boolean not null default true,
@@ -69,56 +70,53 @@ create table challenges (
 );
 
 create table challenge_progress (
-  member_id uuid not null references members(id) on delete cascade,
-  challenge_id uuid not null references challenges(id) on delete cascade,
+  member_id text not null references members(id) on delete cascade,
+  challenge_id text not null references challenges(id) on delete cascade,
+  progress int not null default 0,
   joined_at timestamptz not null default now(),
   completed_at timestamptz,
   primary key (member_id, challenge_id)
 );
 
-create table badge_defs (
-  id text primary key,
-  name text not null,
-  emoji text,
-  description text
-);
-
 create table earned_badges (
-  member_id uuid not null references members(id) on delete cascade,
-  badge_id text not null references badge_defs(id),
+  member_id text not null references members(id) on delete cascade,
+  badge_id text not null,                   -- badge ids live in app code
   earned_at timestamptz not null default now(),
   primary key (member_id, badge_id)
 );
 
--- Rewards are attached to challenges (challenges.reward). Completing a challenge
--- creates a row here; staff move it through the fulfillment lifecycle.
 create table earned_rewards (
-  id uuid primary key default uuid_generate_v4(),
-  member_id uuid not null references members(id) on delete cascade,
-  challenge_id uuid not null references challenges(id),
-  challenge_name text not null, -- snapshot
-  reward text not null,         -- snapshot
+  id text primary key,
+  member_id text not null references members(id) on delete cascade,
+  challenge_id text not null,
+  challenge_name text not null,             -- snapshot
+  reward text not null,                     -- snapshot
   reward_emoji text not null default '🎁',
   earned_at timestamptz not null default now(),
-  status text not null default 'earned' check (status in ('earned', 'ready', 'collected', 'declined')),
+  status text not null default 'earned' check (status in ('earned','ready','collected','declined')),
   decided_at timestamptz,
-  unique (member_id, challenge_id) -- one reward per challenge per member
-);
-
-create table push_subscriptions (
-  id uuid primary key default uuid_generate_v4(),
-  member_id uuid not null references members(id) on delete cascade,
-  subscription jsonb not null,
-  created_at timestamptz not null default now(),
-  unique (member_id, subscription)
+  unique (member_id, challenge_id)
 );
 
 create table notifications (
-  id uuid primary key default uuid_generate_v4(),
-  member_id uuid not null references members(id) on delete cascade,
+  id text primary key,
+  member_id text not null references members(id) on delete cascade,
   text text not null,
   at timestamptz not null default now(),
   read boolean not null default false
+);
+
+create table push_subscriptions (
+  id text primary key,
+  member_id text not null references members(id) on delete cascade,
+  subscription jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create table announcements (
+  id text primary key,
+  text text not null,
+  at timestamptz not null default now()
 );
 
 create table settings (
@@ -126,89 +124,29 @@ create table settings (
   value jsonb not null
 );
 insert into settings values
-  ('leaderboards_enabled', 'true'),
-  ('studio_code', '"RX-STUDIO-CHECKIN"');
+  ('studio_code', '"RX-STUDIO-CHECKIN"'),
+  ('leaderboards_enabled', 'true');
 
--- ============ Server-side check-in (SECURITY DEFINER RPC) ============
--- Call from the app: supabase.rpc('perform_check_in', { scanned_code: '...' })
--- All anti-cheat rules live in the database so the client can never bypass them.
+-- ============ Lock everything down (server-only access) ============
 
-create or replace function perform_check_in(scanned_code text)
-returns jsonb
-language plpgsql
-security definer
-as $$
-declare
-  v_member members%rowtype;
-  v_class classes%rowtype;
-  v_window interval := interval '30 minutes';
+do $$
+declare t text;
 begin
-  select * into v_member from members where id = auth.uid();
-  if not found then
-    return jsonb_build_object('ok', false, 'message', 'Member not found.');
-  end if;
+  for t in
+    select tablename from pg_tables where schemaname = 'public'
+  loop
+    execute format('alter table %I enable row level security', t);
+  end loop;
+end $$;
+-- No policies are created on purpose: anon/authenticated roles can read nothing.
+-- The Next.js server uses the service-role key, which bypasses RLS.
 
-  if scanned_code <> (select value #>> '{}' from settings where key = 'studio_code') then
-    return jsonb_build_object('ok', false, 'message', 'Invalid studio code.');
-  end if;
-
-  if v_member.membership_expires is null or v_member.membership_expires < now() then
-    return jsonb_build_object('ok', false, 'message', 'Membership expired. Please renew.');
-  end if;
-
-  select c.* into v_class
-  from bookings b join classes c on c.id = b.class_id
-  where b.member_id = v_member.id
-    and now() between c.starts_at - v_window
-                  and c.starts_at + (c.duration_min || ' minutes')::interval + v_window
-  order by c.starts_at limit 1;
-
-  if not found then
-    return jsonb_build_object('ok', false, 'message', 'No booked class in the check-in window.');
-  end if;
-
-  if exists (select 1 from check_ins where member_id = v_member.id and class_id = v_class.id) then
-    return jsonb_build_object('ok', false, 'message', 'Already checked in for this class.');
-  end if;
-
-  insert into check_ins (member_id, class_id) values (v_member.id, v_class.id);
-
-  -- Challenge/badge evaluation runs in the evaluate_progress trigger below.
-  return jsonb_build_object('ok', true, 'message', 'Checked in to ' || v_class.title, 'class', v_class.title);
-end;
-$$;
-
--- ============ Row Level Security ============
-
-alter table members enable row level security;
-alter table check_ins enable row level security;
-alter table bookings enable row level security;
-alter table challenge_progress enable row level security;
-alter table earned_badges enable row level security;
-alter table earned_rewards enable row level security;
-alter table notifications enable row level security;
-
-create policy "own profile" on members for select using (auth.uid() = id);
-create policy "own check-ins" on check_ins for select using (auth.uid() = member_id);
-create policy "own bookings" on bookings for select using (auth.uid() = member_id);
-create policy "own progress" on challenge_progress for all using (auth.uid() = member_id);
-create policy "own badges" on earned_badges for select using (auth.uid() = member_id);
-create policy "own earned rewards" on earned_rewards for select using (auth.uid() = member_id);
-create policy "own notifications" on notifications for all using (auth.uid() = member_id);
-
--- Public read for catalog tables
-alter table challenges enable row level security;
-alter table badge_defs enable row level security;
-alter table classes enable row level security;
-alter table instructors enable row level security;
-create policy "read challenges" on challenges for select using (true);
-create policy "read badges" on badge_defs for select using (true);
-create policy "read classes" on classes for select using (true);
-create policy "read instructors" on instructors for select using (true);
-
--- Admin operations should go through the service-role key on the server (Next.js
--- route handlers / server actions), never from the browser.
+-- ============ Indexes ============
 
 create index idx_checkins_member on check_ins(member_id, at);
 create index idx_bookings_member on bookings(member_id);
+create index idx_bookings_class on bookings(class_id);
 create index idx_classes_start on classes(starts_at);
+create index idx_notifications_member on notifications(member_id, at desc);
+create index idx_rewards_status on earned_rewards(status);
+create index idx_members_simplybook on members(simplybook_id);

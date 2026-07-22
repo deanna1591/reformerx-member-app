@@ -1,9 +1,10 @@
 import { memberLogin } from "@/app/actions";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
-export default function Login({ searchParams }: { searchParams: { error?: string } }) {
+export default async function Login({ searchParams }: { searchParams: { error?: string } }) {
+  await ensureDB();
   const demo = getDB().members.slice(0, 2);
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 pb-16">

@@ -1,9 +1,10 @@
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import QRDisplay from "@/components/QRDisplay";
 
 export const dynamic = "force-dynamic";
 
-export default function StudioQR() {
+export default async function StudioQR() {
+  await ensureDB();
   const db = getDB();
   return (
     <div>

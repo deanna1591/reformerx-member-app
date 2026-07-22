@@ -1,10 +1,11 @@
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { computeProgress } from "@/lib/engine";
 import { sendAnnouncement, resetDemoData } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminOverview() {
+export default async function AdminOverview() {
+  await ensureDB();
   const db = getDB();
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);

@@ -1,10 +1,11 @@
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { createChallenge, toggleChallenge } from "@/app/actions";
 import { fmtDate } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminChallenges() {
+export default async function AdminChallenges() {
+  await ensureDB();
   const db = getDB();
   return (
     <div>

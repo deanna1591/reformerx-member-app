@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { fmtDate, fmtTime, membershipActive, memberStats, personalRecords } from "@/lib/engine";
 import QRDisplay from "@/components/QRDisplay";
 import { memberLogout } from "@/app/actions";
@@ -9,7 +9,8 @@ import ShareButton from "@/components/ShareButton";
 
 export const dynamic = "force-dynamic";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  await ensureDB();
   const member = currentMember();
   if (!member) redirect("/login");
   const db = getDB();

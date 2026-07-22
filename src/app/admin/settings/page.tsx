@@ -1,9 +1,10 @@
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { toggleLeaderboards } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminSettings() {
+export default async function AdminSettings() {
+  await ensureDB();
   const db = getDB();
   return (
     <div>

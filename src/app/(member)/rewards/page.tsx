@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { computeProgress, fmtDate } from "@/lib/engine";
 import CarriageProgress from "@/components/CarriageProgress";
 
@@ -14,7 +14,8 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   declined: { label: "See reception", cls: "bg-spring-red/10 text-spring-red" },
 };
 
-export default function Rewards() {
+export default async function Rewards() {
+  await ensureDB();
   const member = currentMember();
   if (!member) redirect("/login");
   const db = getDB();

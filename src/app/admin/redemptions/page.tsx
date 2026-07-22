@@ -1,10 +1,11 @@
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { fmtDate } from "@/lib/engine";
 import { setRewardStatus } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminRewards() {
+export default async function AdminRewards() {
+  await ensureDB();
   const db = getDB();
   const rewards = [...db.earnedRewards].sort((a, b) => +new Date(b.earnedAt) - +new Date(a.earnedAt));
   const queue = rewards.filter((r) => r.status === "earned");

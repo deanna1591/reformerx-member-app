@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { fmtDate, membershipActive, memberStats } from "@/lib/engine";
 import { simulateSimplybookSync } from "@/app/actions";
 import SyncButton from "@/components/SyncButton";
@@ -13,11 +13,12 @@ const norm = (s: string) =>
 
 type Status = "all" | "active" | "expired" | "none";
 
-export default function AdminMembers({
+export default async function AdminMembers({
   searchParams,
 }: {
   searchParams: { q?: string; status?: string; type?: string; page?: string };
 }) {
+  await ensureDB();
   const db = getDB();
   const q = (searchParams.q ?? "").trim();
   const status = (["all", "active", "expired", "none"].includes(searchParams.status ?? "")

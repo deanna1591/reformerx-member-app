@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentMember } from "@/lib/auth";
-import { getDB } from "@/lib/store";
+import { getDB, ensureDB } from "@/lib/store";
 import { computeProgress } from "@/lib/engine";
 import CarriageProgress from "@/components/CarriageProgress";
 import { joinChallenge } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
-export default function ChallengesPage() {
+export default async function ChallengesPage() {
+  await ensureDB();
   const member = currentMember();
   if (!member) redirect("/login");
   const db = getDB();
