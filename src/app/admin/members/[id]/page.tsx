@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, fmtDate, fmtTime, membershipActive, memberStats, personalRecords } from "@/lib/engine";
+import { computeProgress, fmtDate, fmtTime, membershipActive, memberActivity, memberStats, personalRecords } from "@/lib/engine";
 import { adminCheckIn, extendMembership, sendMemberMessage, updateMembership } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ export default async function MemberDetail({ params }: { params: { id: string } 
 
   const active = membershipActive(m);
   const stats = memberStats(m.id);
+  const act = memberActivity(m.id);
   const records = personalRecords(m.id);
 
   const history = db.checkIns
@@ -58,6 +59,24 @@ export default async function MemberDetail({ params }: { params: { id: string } 
         <span className={`mt-2 rounded-full px-3 py-1.5 text-[12px] font-semibold uppercase ${active ? "bg-spring-green/15 text-spring-green" : "bg-spring-red/15 text-spring-red"}`}>
           {active ? "Active" : "Inactive"}
         </span>
+      </div>
+
+      {/* Lifetime activity */}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {[
+          { label: "Classes attended", value: act.attended, hint: "SimplyBook history + app" },
+          { label: "App check-ins", value: act.checkIns, hint: "QR scans" },
+          { label: "Upcoming", value: act.upcoming, hint: "booked classes" },
+          { label: "Challenges joined", value: act.challengesJoined },
+          { label: "Challenges done", value: act.challengesCompleted },
+          { label: "Rewards earned", value: act.rewardsEarned, hint: `${act.rewardsCollected} collected` },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl2 bg-white p-4 shadow-card">
+            <p className="font-display text-[28px] leading-none tabular-nums">{s.value}</p>
+            <p className="mt-1.5 text-[12px] font-semibold uppercase tracking-wide text-smoke">{s.label}</p>
+            {s.hint && <p className="mt-0.5 text-[11px] text-smoke/80">{s.hint}</p>}
+          </div>
+        ))}
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">

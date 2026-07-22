@@ -270,6 +270,41 @@ export function notify(memberId: string, text: string) {
   });
 }
 
+/** Lifetime counters shown across the admin console.
+ *  attended  = past classes from SimplyBook bookings + any app check-in (deduped)
+ *  checkIns  = app QR check-ins only (0 until the app rolls out)
+ *  challengesJoined / challengesCompleted = enrolment and completion counts */
+export function memberActivity(memberId: string) {
+  const db = getDB();
+  const now = Date.now();
+  const attendedClassIds = new Set<string>();
+  for (const b of db.bookings) {
+    if (b.memberId !== memberId) continue;
+    const c = db.classes.find((x) => x.id === b.classId);
+    if (c && new Date(c.startsAt).getTime() < now) attendedClassIds.add(c.id);
+  }
+  const mine = db.checkIns.filter((ci) => ci.memberId === memberId);
+  for (const ci of mine) attendedClassIds.add(ci.classId);
+
+  const progress = db.challengeProgress.filter((p) => p.memberId === memberId);
+  const rewards = db.earnedRewards.filter((r) => r.memberId === memberId);
+  const upcoming = db.bookings.filter((b) => {
+    if (b.memberId !== memberId) return false;
+    const c = db.classes.find((x) => x.id === b.classId);
+    return Boolean(c && new Date(c.startsAt).getTime() >= now);
+  }).length;
+
+  return {
+    attended: attendedClassIds.size,
+    checkIns: mine.length,
+    challengesJoined: progress.length,
+    challengesCompleted: progress.filter((p) => p.completedAt).length,
+    rewardsEarned: rewards.length,
+    rewardsCollected: rewards.filter((r) => r.status === "collected").length,
+    upcoming,
+  };
+}
+
 export function memberStats(memberId: string) {
   const db = getDB();
   const mine = db.checkIns.filter((ci) => ci.memberId === memberId);

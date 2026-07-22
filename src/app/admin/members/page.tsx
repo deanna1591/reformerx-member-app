@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtDate, membershipActive, memberStats } from "@/lib/engine";
+import { fmtDate, membershipActive, memberActivity } from "@/lib/engine";
 import { simulateSimplybookSync } from "@/app/actions";
 import SyncButton from "@/components/SyncButton";
 
@@ -156,7 +156,9 @@ export default async function AdminMembers({
               <th className="px-5 py-3">Member</th>
               <th className="px-5 py-3">Membership</th>
               <th className="px-5 py-3">Expires</th>
-              <th className="px-5 py-3">Classes</th>
+              <th className="px-5 py-3" title="Classes attended (SimplyBook history + app check-ins)">Attended</th>
+              <th className="px-5 py-3" title="QR check-ins in the app">Check-ins</th>
+              <th className="px-5 py-3" title="Challenges joined → completed">Challenges</th>
               <th className="px-5 py-3">Rewards</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3"></th>
@@ -165,7 +167,7 @@ export default async function AdminMembers({
           <tbody className="divide-y divide-line">
             {slice.map((m) => {
               const st = statusOf(m);
-              const stats = memberStats(m.id);
+              const act = memberActivity(m.id);
               return (
                 <tr key={m.id} className="transition hover:bg-chalk/60">
                   <td className="px-5 py-3">
@@ -176,8 +178,14 @@ export default async function AdminMembers({
                   </td>
                   <td className="px-5 py-3">{m.membershipType}</td>
                   <td className="px-5 py-3 tabular-nums">{st === "none" ? "—" : fmtDate(m.membershipExpires)}</td>
-                  <td className="px-5 py-3 tabular-nums">{stats.total}</td>
-                  <td className="px-5 py-3 tabular-nums">{stats.rewardsCollected}</td>
+                  <td className="px-5 py-3 tabular-nums">{act.attended}</td>
+                  <td className="px-5 py-3 tabular-nums">{act.checkIns}</td>
+                  <td className="px-5 py-3 tabular-nums">
+                    {act.challengesJoined}
+                    <span className="text-smoke"> → </span>
+                    <span className={act.challengesCompleted > 0 ? "font-semibold text-spring-green" : ""}>{act.challengesCompleted}</span>
+                  </td>
+                  <td className="px-5 py-3 tabular-nums">{act.rewardsEarned}</td>
                   <td className="px-5 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${
                       st === "active" ? "bg-spring-green/15 text-spring-green" : st === "none" ? "bg-chalk text-smoke" : "bg-spring-red/15 text-spring-red"
@@ -194,7 +202,7 @@ export default async function AdminMembers({
               );
             })}
             {slice.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-[14px] text-smoke">No members match. Clear the search or filters.</td></tr>
+              <tr><td colSpan={9} className="px-5 py-8 text-center text-[14px] text-smoke">No members match. Clear the search or filters.</td></tr>
             )}
           </tbody>
         </table>

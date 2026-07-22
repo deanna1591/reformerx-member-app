@@ -282,7 +282,8 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
 
 
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
-  const from = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
+  const bookingDays = Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
+  const from = new Date(Date.now() - bookingDays * 86400000).toISOString().slice(0, 10);
   const to = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   let bookings: SbBooking[] = [];
   let bookingSource = "none";
@@ -456,11 +457,11 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   if (membershipRows === 0) {
     try {
       const backfill = process.env.SIMPLYBOOK_SCAN_INVOICES === "1";
-      const invDays = backfill ? 400 : 60;
+      const invDays = backfill ? 400 : 30;
       const invFrom = new Date(Date.now() - invDays * 86400000).toISOString().slice(0, 10);
       const invoices = await sbAll<SbInvoice>(
         `/admin/invoices?filter[datetime_from]=${invFrom}`,
-        backfill ? 60 : 12
+        backfill ? 60 : 6
       );
       const period = /\((\d{2})-(\d{2})-(\d{4})\s*-\s*(\d{2})-(\d{2})-(\d{4})\)/;
       const namePrefix = /^[^:]{0,30}:\s*(.+?)\s*\(/;
@@ -530,7 +531,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   return {
     ok: true,
-    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${bookingRows} new bookings [${bookingSource}]${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
+    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d]${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,
