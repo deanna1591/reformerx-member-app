@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry } from "@/lib/engine";
+import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry, canBook } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioLongDate, STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
@@ -35,6 +35,7 @@ export default async function ClassDetail({ params }: { params: { id: string } }
     (!myEntry.offerExpiresAt || new Date(myEntry.offerExpiresAt).getTime() > Date.now());
 
   const t = getT();
+  const eligibility = canBook(member.id);
   const dateLabel = studioLongDate(start);
   const endsAt = new Date(start.getTime() + cls.durationMin * 60000);
 
@@ -169,6 +170,14 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                   </ConfirmButton>
                 </form>
               </>
+            ) : eligibility.reason === "no_credits" ? (
+              <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
+                <p className="font-display text-[18px]">{t("class.noCreditsTitle")}</p>
+                <p className="mt-1 text-[13px] text-smoke">{t("class.noCreditsBody")}</p>
+                <Link href="/store" className="mt-3 inline-block rounded-full bg-ink px-5 py-2.5 text-[13px] font-semibold text-white">
+                  {t("class.topUp")}
+                </Link>
+              </div>
             ) : !active ? (
               <Link href="/store" className="block rounded-xl2 bg-ink py-4 text-center text-[15px] font-semibold text-white">
                 {t("class.getPassToBook")}

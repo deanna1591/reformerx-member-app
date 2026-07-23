@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtTime, membershipActive, classIsFull, waitlistPosition } from "@/lib/engine";
+import { fmtTime, membershipActive, classIsFull, waitlistPosition, canBook } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioDayKey, studioDayLabel } from "@/lib/time";
 import { getT } from "@/lib/i18n";
@@ -24,6 +24,7 @@ export default async function SchedulePage({
   const active = membershipActive(member);
   const canBookInApp = inAppBookingEnabled();
   const t = getT();
+  const eligibility = canBook(member.id);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -60,7 +61,11 @@ export default async function SchedulePage({
       <header className="rounded-b-[26px] bg-ink px-5 pb-5 pt-[max(1.2rem,env(safe-area-inset-top))] text-white">
         <h1 className="font-display text-[28px] uppercase tracking-wide">{t("schedule.title")}</h1>
         <p className="mt-0.5 text-[13px] text-white/60">
-          {active ? t("schedule.subtitleActive", { pass: member.membershipType }) : t("schedule.subtitleInactive")}
+          {active
+            ? eligibility.creditsLeft != null
+              ? `${member.membershipType} · ${t("schedule.creditsLeft", { n: eligibility.creditsLeft })}`
+              : t("schedule.subtitleActive", { pass: member.membershipType })
+            : t("schedule.subtitleInactive")}
         </p>
 
         <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1">
@@ -154,9 +159,9 @@ export default async function SchedulePage({
                 >
                   {t("schedule.full")}
                 </Link>
-              ) : !active ? (
+              ) : !eligibility.ok ? (
                 <Link href="/store" className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white">
-                  {t("schedule.getPass")}
+                  {eligibility.reason === "no_credits" ? t("schedule.topUp") : t("schedule.getPass")}
                 </Link>
               ) : canBookInApp ? (
                 <form action={reserveClass}>

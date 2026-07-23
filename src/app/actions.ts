@@ -376,6 +376,20 @@ export async function reserveClass(formData: FormData) {
     return;
   }
 
+  // Credits are checked on the server too — the UI can be out of date
+  const { canBook } = await import("@/lib/engine");
+  const eligibility = canBook(member.id);
+  if (!eligibility.ok) {
+    notifyKey(
+      member.id,
+      eligibility.reason === "no_credits" ? "notif.noCredits" : "notif.noPass",
+      { title: cls.title }
+    );
+    saveDB();
+    revalidatePath("/schedule");
+    return;
+  }
+
   const { createSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
   if (!inAppBookingEnabled() || !cls.serviceId || !member.simplybookId) {
     notifyKey(member.id, "notif.bookExternally");
@@ -749,6 +763,14 @@ export async function confirmWaitlistOffer(formData: FormData) {
     saveDB();
     const { offerNextSpot } = await import("@/lib/engine");
     offerNextSpot(classId);
+    revalidatePath(`/class/${classId}`);
+    return;
+  }
+
+  const { canBook } = await import("@/lib/engine");
+  if (!canBook(member.id).ok) {
+    notifyKey(member.id, "notif.noCredits", { title: cls.title });
+    saveDB();
     revalidatePath(`/class/${classId}`);
     return;
   }

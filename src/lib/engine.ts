@@ -404,6 +404,42 @@ export function passUsage(memberId: string) {
   };
 }
 
+/** Can this member book right now?
+ *  - no active pass                → send them to the shop
+ *  - credit pack with none left    → send them to the shop
+ *  - unlimited / time-based pass   → yes
+ *  Credits are counted against the current pass period only, so a new pack
+ *  resets the allowance the way SimplyBook does. */
+export function canBook(memberId: string): {
+  ok: boolean;
+  reason: "ok" | "no_pass" | "no_credits";
+  creditsLeft: number | null;
+} {
+  const db = getDB();
+  const m = db.members.find((x) => x.id === memberId);
+  if (!m || !membershipActive(m)) return { ok: false, reason: "no_pass", creditsLeft: null };
+
+  const pass = passUsage(memberId);
+  if (!pass) return { ok: false, reason: "no_pass", creditsLeft: null };
+
+  // Unlimited or open-ended passes have no credit ceiling
+  if (pass.unlimited || pass.credits == null) return { ok: true, reason: "ok", creditsLeft: null };
+
+  // Upcoming bookings already consume credits — otherwise a member could book
+  // ten classes on a ten-class pack and attend none of them for free.
+  const now = Date.now();
+  const upcomingBooked = db.bookings.filter((b) => {
+    if (b.memberId !== memberId) return false;
+    const c = db.classes.find((x) => x.id === b.classId);
+    return Boolean(c && new Date(c.startsAt).getTime() >= now);
+  }).length;
+
+  const left = pass.credits - pass.used - upcomingBooked;
+  return left > 0
+    ? { ok: true, reason: "ok", creditsLeft: left }
+    : { ok: false, reason: "no_credits", creditsLeft: 0 };
+}
+
 export function memberStats(memberId: string) {
   const db = getDB();
   const mine = attendedClasses(memberId);
