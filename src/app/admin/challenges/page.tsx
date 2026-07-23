@@ -1,6 +1,7 @@
 import { getDB, ensureDB } from "@/lib/store";
 import { getT } from "@/lib/i18n";
-import { createChallenge, toggleChallenge } from "@/app/actions";
+import { createChallenge, toggleChallenge, deleteChallenge, addStarterChallenges } from "@/app/actions";
+import ConfirmButton from "@/components/ConfirmButton";
 import { fmtDate } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,10 @@ export default async function AdminChallenges() {
       <h1 className="font-display text-[32px]">{t("adm.c.title")}</h1>
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
         <section className="space-y-3">
-          {db.challenges.map((ch) => (
+          {db.challenges.map((ch) => {
+            const joined = db.challengeProgress.filter((p) => p.challengeId === ch.id).length;
+            const completed = db.challengeProgress.filter((p) => p.challengeId === ch.id && p.completedAt).length;
+            return (
             <div key={ch.id} className="rounded-xl2 bg-white p-5 shadow-card">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -25,15 +29,47 @@ export default async function AdminChallenges() {
                     {ch.startDate && <> · {fmtDate(ch.startDate)} — {ch.endDate ? fmtDate(ch.endDate) : "open"}</>}
                     {ch.leaderboard && " · 🏆 leaderboard"}
                   </p>
+                  <p className="mt-1 text-[12px] text-smoke">
+                    {t("adm.c.joinedCount", { n: joined })}
+                    {completed > 0 && ` · ${t("adm.c.completedCount", { n: completed })}`}
+                  </p>
                 </div>
-                <form action={async () => { "use server"; await toggleChallenge(ch.id); }}>
-                  <button className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${ch.active ? "bg-spring-green/15 text-spring-green" : "bg-line text-smoke"}`}>
-                    {ch.active ? "Active" : "Paused"}
-                  </button>
-                </form>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <form action={async () => { "use server"; await toggleChallenge(ch.id); }}>
+                    <button className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${ch.active ? "bg-spring-green/15 text-spring-green" : "bg-line text-smoke"}`}>
+                      {ch.active ? t("adm.c.active") : t("adm.c.paused")}
+                    </button>
+                  </form>
+                  {joined === 0 && (
+                    <form action={deleteChallenge}>
+                      <input type="hidden" name="challengeId" value={ch.id} />
+                      <ConfirmButton
+                        message={t("adm.c.deleteConfirm", { name: ch.name })}
+                        className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-spring-red"
+                      >
+                        {t("adm.c.delete")}
+                      </ConfirmButton>
+                    </form>
+                  )}
+                  {joined > 0 && <span className="px-1 text-[11px] text-smoke">{t("adm.c.cannotDelete")}</span>}
+                </div>
               </div>
             </div>
-          ))}
+            );
+          })}
+
+          {db.challenges.length === 0 && (
+            <div className="rounded-xl2 bg-white p-8 text-center shadow-card">
+              <p className="font-display text-[20px]">{t("adm.c.emptyTitle")}</p>
+              <p className="mt-1 text-[13px] text-smoke">{t("adm.c.emptyBody")}</p>
+            </div>
+          )}
+
+          <form action={addStarterChallenges}>
+            <button className="w-full rounded-xl2 border border-dashed border-line bg-white py-4 text-[13px] font-semibold text-tan-deep">
+              {t("adm.c.addStarters")}
+            </button>
+          </form>
         </section>
 
         <section className="h-fit rounded-xl2 bg-white p-6 shadow-card">

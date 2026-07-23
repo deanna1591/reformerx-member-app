@@ -913,3 +913,126 @@ export async function sendRenewalRemindersNow() {
   revalidatePath("/admin/passes");
   redirect(`/admin/passes?sent=${result.sent}`);
 }
+
+/* ---------- challenge management ---------- */
+
+export async function deleteChallenge(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const id = String(formData.get("challengeId") ?? "");
+  const joined = db.challengeProgress.filter((p) => p.challengeId === id).length;
+  // Never delete a challenge members are already playing — their progress and
+  // any reward they earned would vanish. Deactivating hides it instead.
+  if (joined > 0) {
+    const ch = db.challenges.find((c) => c.id === id);
+    if (ch) ch.active = false;
+    saveDB();
+    revalidatePath("/admin/challenges");
+    return;
+  }
+  db.challenges = db.challenges.filter((c) => c.id !== id);
+  saveDB();
+  revalidatePath("/admin/challenges");
+  revalidatePath("/challenges");
+}
+
+/** One-tap set-up: the five challenges we'd recommend a studio start with. */
+export async function addStarterChallenges() {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const iso = (d: Date) => d.toISOString();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+  const starters: Array<Omit<Challenge, "id">> = [
+    {
+      name: "12 in 30",
+      emoji: "🔥",
+      description:
+        "Twelve classes in thirty days. Roughly three a week — the rhythm where people stop thinking about it and it just becomes their week.",
+      type: "class_count",
+      goal: 12,
+      startDate: undefined,
+      endDate: undefined,
+      reward: "Free ReformerX grip socks",
+      rewardEmoji: "🧦",
+      springColor: "red",
+      leaderboard: false,
+      active: true,
+    },
+    {
+      name: "7-Day Streak",
+      emoji: "⚡",
+      description: "A class every day for seven days straight. Short, sharp, and the one people talk about.",
+      type: "streak_days",
+      goal: 7,
+      startDate: undefined,
+      endDate: undefined,
+      reward: "Coffee or smoothie on the house",
+      rewardEmoji: "☕",
+      springColor: "yellow",
+      leaderboard: true,
+      active: true,
+    },
+    {
+      name: "Meet the Team",
+      emoji: "🤝",
+      description:
+        "Take a class with five different coaches. A gentle nudge towards the quieter slots — and people usually find a new favourite.",
+      type: "instructor_variety",
+      goal: 5,
+      startDate: undefined,
+      endDate: undefined,
+      reward: "One free class credit",
+      rewardEmoji: "🎟️",
+      springColor: "blue",
+      leaderboard: false,
+      active: true,
+    },
+    {
+      name: "Bring a Friend",
+      emoji: "💛",
+      description:
+        "Share your member code. When a friend joins with it and takes their first class, you both win.",
+      type: "referrals",
+      goal: 1,
+      startDate: undefined,
+      endDate: undefined,
+      reward: "A free class for you both",
+      rewardEmoji: "🎁",
+      springColor: "green",
+      leaderboard: false,
+      active: true,
+    },
+    {
+      name: "Monthly Rhythm",
+      emoji: "📅",
+      description: "Eight classes before the month is out. Resets on the first — a fresh start every month.",
+      type: "monthly_count",
+      goal: 8,
+      startDate: iso(monthStart),
+      endDate: iso(monthEnd),
+      reward: "Entry to the monthly member draw",
+      rewardEmoji: "🎉",
+      springColor: "red",
+      leaderboard: true,
+      active: true,
+    },
+  ];
+
+  let added = 0;
+  for (const s of starters) {
+    if (db.challenges.some((c) => c.name.toLowerCase() === s.name.toLowerCase())) continue;
+    db.challenges.push({
+      ...s,
+      id: `ch-${s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Math.random().toString(36).slice(2, 5)}`,
+    });
+    added++;
+  }
+  saveDB();
+  revalidatePath("/admin/challenges");
+  redirect(`/admin/challenges?added=${added}`);
+}
