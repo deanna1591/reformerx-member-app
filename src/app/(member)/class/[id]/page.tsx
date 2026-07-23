@@ -4,7 +4,7 @@ import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
 import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry, canBook } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
-import { studioLongDate, STUDIO_TZ } from "@/lib/time";
+import { studioLongDate, studioDayKey, STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
 import { reserveClass, cancelReservation, rescheduleClass, joinWaitlist, leaveWaitlist, confirmWaitlistOffer, declineWaitlistOffer } from "@/app/actions";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -36,6 +36,16 @@ export default async function ClassDetail({ params }: { params: { id: string } }
 
   const t = getT();
   const eligibility = canBook(member.id, cls.id);
+  const sameDayBooking = (() => {
+    if (eligibility.reason !== "daily_limit") return null;
+    const day = studioDayKey(cls.startsAt);
+    for (const b of db.bookings) {
+      if (b.memberId !== member.id) continue;
+      const c = db.classes.find((x) => x.id === b.classId);
+      if (c && studioDayKey(c.startsAt) === day) return c;
+    }
+    return null;
+  })();
   const dateLabel = studioLongDate(start);
   const endsAt = new Date(start.getTime() + cls.durationMin * 60000);
 
@@ -171,12 +181,28 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                 </form>
               </>
             ) : eligibility.reason === "daily_limit" ? (
-              <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
+              <div className="rounded-xl2 bg-card p-5 shadow-card">
                 <p className="font-display text-[18px]">{t("class.dailyLimitTitle")}</p>
-                <p className="mt-1 text-[13px] text-smoke">{t("class.dailyLimitBody")}</p>
-                <Link href="/schedule" className="mt-3 inline-block text-[13px] font-semibold text-tan-deep">
-                  {t("home.fullSchedule")} →
-                </Link>
+                <p className="mt-1 text-[13px] text-smoke">
+                  {sameDayBooking
+                    ? t("class.dailyLimitMove", {
+                        title: sameDayBooking.title,
+                        time: fmtTime(sameDayBooking.startsAt),
+                      })
+                    : t("class.dailyLimitBody")}
+                </p>
+                {sameDayBooking && (
+                  <form action={rescheduleClass} className="mt-3">
+                    <input type="hidden" name="fromClassId" value={sameDayBooking.id} />
+                    <input type="hidden" name="toClassId" value={cls.id} />
+                    <ConfirmButton
+                      message={t("class.moveConfirm", { when: `${fmtTime(cls.startsAt)} — ${dateLabel}` })}
+                      className="w-full rounded-xl2 bg-ink py-3.5 text-[14px] font-semibold text-white"
+                    >
+                      {t("class.moveMine")}
+                    </ConfirmButton>
+                  </form>
+                )}
               </div>
             ) : eligibility.reason === "no_credits" ? (
               <div className="rounded-xl2 bg-card p-5 text-center shadow-card">

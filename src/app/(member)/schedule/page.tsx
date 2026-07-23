@@ -6,7 +6,8 @@ import { fmtTime, membershipActive, classIsFull, waitlistPosition, canBook } fro
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioDayKey, studioDayLabel } from "@/lib/time";
 import { getT } from "@/lib/i18n";
-import { reserveClass } from "@/app/actions";
+import ConfirmButton from "@/components/ConfirmButton";
+import { reserveClass, rescheduleClass } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,15 @@ export default async function SchedulePage({
   list = list.sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
 
   const myBookings = new Set(db.bookings.filter((b) => b.memberId === member.id).map((b) => b.classId));
+  // Which class the member already holds on each day — used to offer a move
+  // instead of blocking, when their pass allows only one class per day.
+  const bookedByDay = new Map<string, { id: string; title: string; startsAt: string }>();
+  for (const b of db.bookings) {
+    if (b.memberId !== member.id) continue;
+    const c = db.classes.find((x) => x.id === b.classId);
+    if (!c) continue;
+    bookedByDay.set(studioDayKey(c.startsAt), { id: c.id, title: c.title, startsAt: c.startsAt });
+  }
 
   const href = (over: Record<string, string>) => {
     const p = new URLSearchParams({ d: selected, ...(type !== "all" ? { type } : {}), ...(coach !== "all" ? { coach } : {}), ...over });
@@ -160,9 +170,25 @@ export default async function SchedulePage({
                   {t("schedule.full")}
                 </Link>
               ) : canBook(member.id, c.id).reason === "daily_limit" ? (
-                <span className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-smoke">
-                  {t("schedule.bookedToday")}
-                </span>
+                (() => {
+                  const held = bookedByDay.get(studioDayKey(c.startsAt));
+                  if (!held) return null;
+                  return (
+                    <form action={rescheduleClass}>
+                      <input type="hidden" name="fromClassId" value={held.id} />
+                      <input type="hidden" name="toClassId" value={c.id} />
+                      <ConfirmButton
+                        message={t("schedule.moveConfirm", {
+                          from: fmtTime(held.startsAt),
+                          to: fmtTime(c.startsAt),
+                        })}
+                        className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-tan-deep transition active:scale-95"
+                      >
+                        {t("schedule.moveHere")}
+                      </ConfirmButton>
+                    </form>
+                  );
+                })()
               ) : !eligibility.ok ? (
                 <Link href="/store" className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white">
                   {eligibility.reason === "no_credits" ? t("schedule.topUp") : t("schedule.getPass")}
