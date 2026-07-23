@@ -27,7 +27,9 @@ const at = (offsetDays: number, hour = 9) => {
 };
 
 async function main() {
-  const { getDB, saveDB } = await import("../src/lib/store");
+  // Deliberately no saveDB import: this suite wipes the database for its
+  // fixtures, so it must never be able to persist anything anywhere.
+  const { getDB } = await import("../src/lib/store");
   const engine = await import("../src/lib/engine");
   const { translate, LOCALES } = await import("../src/lib/i18n");
   const { studioToISO, isoToStudioString, studioDayKey } = await import("../src/lib/time");
@@ -248,8 +250,6 @@ async function main() {
   member("ci-expired", { membershipExpires: at(-2) });
   const expiredResult = engine.performCheckIn("ci-expired", db.settings.studioCode);
   check("an expired member cannot check in", expiredResult.ok, false);
-
-  saveDB();
 
   console.log("\n" + "=".repeat(64));
   console.log(`${passed} passed, ${failed} failed`);

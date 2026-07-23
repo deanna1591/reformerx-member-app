@@ -15,9 +15,14 @@ try {
 
 async function main() {
   const { simplybookConfigured, syncFromSimplybook } = await import("../src/lib/simplybook");
-  const { getDB } = await import("../src/lib/store");
+  const { getDB, ensureDB } = await import("../src/lib/store");
 
   console.log("configured:", simplybookConfigured());
+  // Load the shared database first. Without this the sync would work against a
+  // local cache only, and the write-guard would (correctly) refuse to save.
+  await ensureDB();
+  const before = getDB();
+  console.log(`loaded store: ${before.members.length} members, ${before.bookings.length} bookings`);
   console.time("sync");
   try {
     const result = await syncFromSimplybook();
