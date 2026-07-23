@@ -900,11 +900,13 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     }
   }
 
-  saveDB();
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
+  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
+  db.settings.lastSync = `${new Date().toISOString()}|ok|${message}`;
+  saveDB();
   return {
     ok: true,
-    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${fullClasses ? `, ${fullClasses} full` : ""}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
+    message,
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,

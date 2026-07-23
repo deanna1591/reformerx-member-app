@@ -305,6 +305,11 @@ declare global {
   var __rxdb: DB | undefined;
   // eslint-disable-next-line no-var
   var __rxdbLoadedAt: number | undefined;
+  /** True once we have either read the remote row or proved it doesn't exist.
+   *  Until then we must never write, or a transient read failure would let a
+   *  freshly-seeded database overwrite real studio data. */
+  // eslint-disable-next-line no-var
+  var __rxdbRemoteKnown: boolean | undefined;
 }
 
 /* ---------------- Supabase persistence (server-only, service role) ----------------
@@ -348,23 +353,32 @@ async function supaSave(db: DB): Promise<void> {
 export async function ensureDB(): Promise<DB> {
   const fresh = globalThis.__rxdb && Date.now() - (globalThis.__rxdbLoadedAt ?? 0) < REFRESH_MS;
   if (fresh) return globalThis.__rxdb!;
+
   if (hasSupabase) {
     try {
       const remote = await supaLoad();
+      globalThis.__rxdbRemoteKnown = true; // the read succeeded either way
       if (remote) {
         globalThis.__rxdb = remote;
         globalThis.__rxdbLoadedAt = Date.now();
         return remote;
       }
-      // First run against an empty database: seed it
+      // The row genuinely doesn't exist — this really is first run.
       const seeded = globalThis.__rxdb ?? seed();
       globalThis.__rxdb = seeded;
       globalThis.__rxdbLoadedAt = Date.now();
       await supaSave(seeded);
       return seeded;
     } catch (e) {
-      console.error("[store] Supabase unavailable, using local cache:", e);
-      // fall through to local behavior so the app stays up
+      // Read failed. Serve whatever we have, but do NOT let it be written back:
+      // overwriting real studio data with a fresh seed is far worse than a
+      // temporary read error.
+      console.error("[store] Supabase read failed — running read-only until it recovers:", e);
+      globalThis.__rxdbRemoteKnown = false;
+      if (globalThis.__rxdb) return globalThis.__rxdb;
+      globalThis.__rxdb = seed();
+      globalThis.__rxdbLoadedAt = Date.now();
+      return globalThis.__rxdb;
     }
   }
   return getDB();
@@ -395,6 +409,11 @@ export function saveDB() {
     /* read-only environments (Vercel): Supabase is the real store there */
   }
   if (hasSupabase && globalThis.__rxdb) {
+    if (globalThis.__rxdbRemoteKnown !== true) {
+      // We never confirmed what's in Supabase — writing now could clobber it.
+      console.error("[store] refusing to write: remote state unknown (read failed earlier)");
+      return;
+    }
     globalThis.__rxdbLoadedAt = Date.now(); // our copy is the newest
     void supaSave(globalThis.__rxdb).catch((e) => console.error("[store] save failed:", e));
   }
