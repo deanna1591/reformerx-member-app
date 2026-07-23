@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { adminLogout, staffLogout, setAdminLanguage } from "@/app/actions";
 import { ensureDB } from "@/lib/store";
 import { currentStaff, isOwner } from "@/lib/staff";
@@ -12,6 +13,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const owner = isOwner();
   const t = getT();
   const locale = getLocale();
+
+  // The sign-in page must not show the dashboard chrome — nobody is signed in yet.
+  const pathname = headers().get("x-pathname") ?? "";
+  if (pathname.startsWith("/admin/login")) return <>{children}</>;
 
   const items: Array<[string, string]> = [
     ["/admin", t("adm.nav.overview")],

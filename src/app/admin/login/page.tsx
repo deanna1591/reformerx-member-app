@@ -5,8 +5,9 @@ export default function AdminLogin({ searchParams }: { searchParams: { error?: s
   const t = getT();
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
-      <p className="font-display text-[15px] tracking-[0.3em] text-smoke">REFORMER X</p>
-      <h1 className="mt-2 font-display text-[34px]">Studio dashboard</h1>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/logo-ink.png" alt="ReformerX" className="h-8 w-auto self-start" />
+      <h1 className="mt-3 font-display text-[34px]">{t("adm.dashboard")}</h1>
       <form action={adminLogin} className="mt-6 space-y-3">
         <div>
           <label htmlFor="password">Admin password</label>

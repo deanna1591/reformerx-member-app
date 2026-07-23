@@ -9,6 +9,8 @@ export function middleware(req: NextRequest) {
     !pathname.startsWith("/login") &&
     !pathname.startsWith("/_next") &&
     !pathname.startsWith("/icons") &&
+    !pathname.startsWith("/brand") &&
+    !/\.(png|jpe?g|svg|webp|gif|ico|webmanifest|js|css|woff2?|txt|xml)$/i.test(pathname) &&
     pathname !== "/manifest.webmanifest" &&
     pathname !== "/sw.js" &&
     pathname !== "/favicon.ico";
@@ -29,9 +31,12 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/admin?denied=1", req.url));
     }
   }
-  return NextResponse.next();
+  // Expose the path so the admin layout can skip its sidebar on the login page
+  const res = NextResponse.next();
+  res.headers.set("x-pathname", pathname);
+  return res;
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icons|manifest.webmanifest|sw.js).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icons|brand|manifest.webmanifest|sw.js).*)"],
 };
