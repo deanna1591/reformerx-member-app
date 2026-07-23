@@ -18,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   ];
   if (owner) {
     items.splice(1, 0, ["/admin/challenges", "Challenges"]);
-    items.push(["/admin/instructors", "Instructors"], ["/admin/settings", "Settings"]);
+    items.push(["/admin/promotions", "What’s on"], ["/admin/instructors", "Instructors"], ["/admin/settings", "Settings"]);
   }
 
   return (

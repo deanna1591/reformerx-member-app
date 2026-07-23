@@ -24,7 +24,7 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/admin/login", req.url));
     }
     // Owner-only areas: settings, challenge design, staff management.
-    const ownerOnly = ["/admin/settings", "/admin/challenges", "/admin/instructors"];
+    const ownerOnly = ["/admin/settings", "/admin/challenges", "/admin/instructors", "/admin/promotions"];
     if (!isOwnerCookie && ownerOnly.some((p) => pathname.startsWith(p))) {
       return NextResponse.redirect(new URL("/admin?denied=1", req.url));
     }

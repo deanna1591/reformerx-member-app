@@ -13,7 +13,7 @@
  *   SIMPLYBOOK_API_BASE   default "https://user-api-v2.simplybook.it"
  */
 import { getDB, saveDB } from "./store";
-import { studioToISO, isoToStudioString } from "./time";
+import { studioToISO, isoToStudioString, studioDayKey } from "./time";
 import type { Member, MembershipType , DB } from "./types";
 
 const BASE = process.env.SIMPLYBOOK_API_BASE || "https://user-api-v2.simplybook.it";
@@ -224,6 +224,74 @@ interface SbInvoice {
   package_instances?: SbPackageInstance[];
 }
 
+
+/** Normalised name key for matching instructors across sources. */
+function instructorKey(name: string): string {
+  return name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+}
+
+function stripHtml(html?: string): string | undefined {
+  if (!html) return undefined;
+  const text = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return text.length ? text.slice(0, 600) : undefined;
+}
+
+function providerPhotoUrl(p: { picture_path?: string; picture_preview?: string; picture?: string }): string | undefined {
+  const rel = p.picture_path ?? p.picture_preview;
+  if (rel) return rel.startsWith("http") ? rel : `https://simplybook.it${rel}`;
+  if (p.picture) return `https://simplybook.it/uploads/${(process.env.SIMPLYBOOK_COMPANY ?? "").trim()}/image_files/preview/${p.picture}`;
+  return undefined;
+}
+
+/** Fold duplicate instructor records (seed / name-keyed / id-keyed) into one. */
+export function mergeDuplicateInstructors(db: DB): number {
+  const byKey = new Map<string, typeof db.instructors[number]>();
+  const classCount = (id: string) => db.classes.filter((c) => c.instructorId === id).length;
+  let merged = 0;
+
+  for (const inst of [...db.instructors]) {
+    const key = instructorKey(inst.name);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, inst);
+      continue;
+    }
+    // Winner: the one linked to SimplyBook, else the one with more classes
+    const [keep, drop] =
+      existing.simplybookUnitId && !inst.simplybookUnitId
+        ? [existing, inst]
+        : inst.simplybookUnitId && !existing.simplybookUnitId
+        ? [inst, existing]
+        : classCount(existing.id) >= classCount(inst.id)
+        ? [existing, inst]
+        : [inst, existing];
+
+    // Carry over anything the winner is missing
+    keep.photoUrl = keep.photoUrl ?? drop.photoUrl;
+    keep.bio = keep.bio ?? drop.bio;
+    keep.email = keep.email ?? drop.email;
+    keep.pinHash = keep.pinHash ?? drop.pinHash;
+    keep.staffRole = keep.staffRole ?? drop.staffRole;
+    keep.simplybookUnitId = keep.simplybookUnitId ?? drop.simplybookUnitId;
+    if (keep.role === "Instructor" && drop.role && drop.role !== "Instructor") keep.role = drop.role;
+
+    for (const c of db.classes) if (c.instructorId === drop.id) c.instructorId = keep.id;
+    db.instructors = db.instructors.filter((x) => x.id !== drop.id);
+    byKey.set(key, keep);
+    merged++;
+  }
+  return merged;
+}
+
 /* ---------------------------------- sync ---------------------------------- */
 
 function mapMembershipType(name: string | undefined): MembershipType {
@@ -291,6 +359,36 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     }
   }
 
+
+  /* 2.5 — providers → instructors (canonical names, bios and photos) */
+  let instructorRows = 0;
+  try {
+    const providers = await sbAll<{
+      id: number; name: string; description?: string; picture?: string; picture_path?: string;
+      picture_preview?: string; is_active?: boolean; email?: string;
+    }>("/admin/providers", 5);
+    for (const pr of providers) {
+      const unitId = String(pr.id);
+      let inst =
+        db.instructors.find((i) => i.simplybookUnitId === unitId) ??
+        db.instructors.find((i) => i.id === `i-sb-${unitId}`) ??
+        db.instructors.find((i) => instructorKey(i.name) === instructorKey(pr.name));
+      if (!inst) {
+        inst = { id: `i-sb-${unitId}`, name: pr.name, role: "Instructor" };
+        db.instructors.push(inst);
+      }
+      inst.simplybookUnitId = unitId;
+      inst.name = pr.name || inst.name;
+      // Never clobber what the studio typed in the dashboard
+      if (!inst.bio) inst.bio = stripHtml(pr.description);
+      if (!inst.photoUrl) inst.photoUrl = providerPhotoUrl(pr);
+      if (pr.is_active === false) inst.active = false;
+      instructorRows++;
+    }
+  } catch {
+    /* provider list is a bonus — the sync continues without it */
+  }
+  const mergedInstructors = mergeDuplicateInstructors(db);
 
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
   const bookingDays = Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
@@ -375,11 +473,21 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     let cls = db.classes.find((x) => x.id === classKey);
     if (!cls) {
       const provName = b.provider?.name ?? b.unit;
-      let instructor = db.instructors.find((i) => provName && i.name.toLowerCase() === provName.toLowerCase());
+      const provUnitId = b.provider?.id ? String(b.provider.id) : b.unit_id ? String(b.unit_id) : undefined;
+      let instructor =
+        (provUnitId ? db.instructors.find((i) => i.simplybookUnitId === provUnitId || i.id === `i-sb-${provUnitId}`) : undefined) ??
+        (provName ? db.instructors.find((i) => instructorKey(i.name) === instructorKey(provName)) : undefined);
       if (!instructor && provName) {
-        instructor = { id: `i-sb-${b.provider?.id ?? b.unit_id ?? provName}`, name: provName, role: "Instructor" };
+        instructor = {
+          id: provUnitId ? `i-sb-${provUnitId}` : `i-name-${instructorKey(provName).replace(/[^a-z0-9]+/g, "-")}`,
+          name: provName,
+          role: "Instructor",
+          simplybookUnitId: provUnitId,
+        };
         db.instructors.push(instructor);
       }
+      if (instructor && provUnitId && !instructor.simplybookUnitId) instructor.simplybookUnitId = provUnitId;
+
       const rawEnd = b.end_datetime ?? b.end_date_time ?? b.end_date;
       const durationMin = b.duration
         ? Math.max(20, Number(b.duration))
@@ -478,10 +586,14 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     if (rpcOk) membershipSource = `JSON-RPC (${list.length} clients checked)`;
   }
 
-  /* 3.4 — Real timetable. Bookings only reveal classes somebody already booked;
-     /admin/timeline/slots returns the published schedule, so the in-app class
-     list shows every session (including empty ones) with spots remaining. */
+  /* 3.4 — Published timetable. IMPORTANT: skip_min_max_restriction must stay 0.
+     With it set, SimplyBook returns every theoretically bookable slot in the
+     provider's working hours rather than the actual class schedule, which
+     fabricated classes that don't exist. We also prune future classes that the
+     timetable no longer contains, so cancelled or rescheduled sessions vanish
+     from the app instead of lingering. */
   let timetableSlots = 0;
+  let prunedClasses = 0;
   if (process.env.SIMPLYBOOK_SYNC_TIMETABLE !== "0") {
     try {
       const services = await sbAll<{
@@ -491,51 +603,68 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       try {
         providers = await sbAll<{ id: number; name: string }>("/admin/providers", 5);
       } catch {
-        /* names fall back to whatever bookings already taught us */
+        /* names fall back to what bookings taught us */
       }
-      const tFrom = new Date().toISOString().slice(0, 10);
-      const tTo = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+      const horizonDays = Math.max(1, Number(process.env.SIMPLYBOOK_TIMETABLE_DAYS ?? 21) || 21);
+      const tFrom = studioDayKey(new Date());
+      const tTo = studioDayKey(new Date(Date.now() + horizonDays * 86400000));
+      const seenClassIds = new Set<string>();
       let calls = 0;
+      let timetableOk = false;
+
       for (const svc of services.filter((x) => x.is_active !== false)) {
-        const provIds: Array<number | undefined> = (svc.providers ?? []).length ? svc.providers! : [undefined];
-        for (const pid of provIds) {
-          if (calls >= 40) break;
+        for (const pid of (svc.providers ?? []).length ? svc.providers! : [undefined]) {
+          if (calls >= 60) break;
           calls++;
           const q = new URLSearchParams({
             service_id: String(svc.id),
             date_from: tFrom,
             date_to: tTo,
             count: "1",
-            skip_min_max_restriction: "1",
+            skip_min_max_restriction: "0",
             with_available_slots: "1",
           });
           if (pid) q.set("provider_id", String(pid));
-          let days: Array<{ date?: string; slots?: Array<{ time?: string; available_count?: number; total_count?: number }> }> = [];
+          let days: Array<{ date?: string; slots?: Array<{ time?: string; available_count?: number }> }> = [];
           try {
             days = await sb<typeof days>(`/admin/timeline/slots?${q.toString()}`);
+            timetableOk = true;
           } catch {
             continue;
           }
+
           for (const day of days ?? []) {
             for (const slot of day.slots ?? []) {
               if (!day.date || !slot.time) continue;
-              const startsAt = studioToISO(`${day.date} ${slot.time.length === 5 ? `${slot.time}:00` : slot.time}`);
+              const time = slot.time.length === 5 ? `${slot.time}:00` : slot.time;
+              const startsAt = studioToISO(`${day.date} ${time}`);
               if (Number.isNaN(new Date(startsAt).getTime())) continue;
               const classId = `c-sb-${svc.id}-${startsAt}`;
+              seenClassIds.add(classId);
+
               let instructorId: string | undefined;
               if (pid) {
-                instructorId = `i-sb-${pid}`;
-                if (!db.instructors.some((i) => i.id === instructorId)) {
-                  const nm = providers.find((x) => Number(x.id) === Number(pid))?.name;
-                  db.instructors.push({ id: instructorId, name: nm || "ReformerX", role: "Instructor" });
+                const nm = providers.find((x) => Number(x.id) === Number(pid))?.name;
+                const existing =
+                  db.instructors.find((i) => i.simplybookUnitId === String(pid)) ??
+                  db.instructors.find((i) => i.id === `i-sb-${pid}`) ??
+                  (nm ? db.instructors.find((i) => instructorKey(i.name) === instructorKey(nm)) : undefined);
+                if (existing) {
+                  existing.simplybookUnitId = existing.simplybookUnitId ?? String(pid);
+                  instructorId = existing.id;
+                } else {
+                  instructorId = `i-sb-${pid}`;
+                  db.instructors.push({ id: instructorId, name: nm || "ReformerX", role: "Instructor", simplybookUnitId: String(pid) });
                 }
               }
-              const existing = db.classes.find((c) => c.id === classId);
-              if (existing) {
-                existing.spotsLeft = slot.available_count;
-                existing.serviceId = String(svc.id);
-                if (pid) existing.unitId = String(pid);
-                if (instructorId && !existing.instructorId) existing.instructorId = instructorId;
+
+              const existingClass = db.classes.find((c) => c.id === classId);
+              if (existingClass) {
+                existingClass.spotsLeft = slot.available_count ?? existingClass.spotsLeft;
+                existingClass.serviceId = String(svc.id);
+                if (pid) existingClass.unitId = String(pid);
+                if (instructorId) existingClass.instructorId = instructorId;
               } else {
                 db.classes.push({
                   id: classId,
@@ -552,6 +681,21 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
             }
           }
         }
+      }
+
+      // Prune future classes SimplyBook no longer lists — unless somebody is
+      // booked into them (those stay so the member's booking isn't orphaned).
+      if (timetableOk && seenClassIds.size > 0) {
+        const horizonMs = Date.now() + horizonDays * 86400000;
+        const keep = db.classes.filter((c) => {
+          const t = new Date(c.startsAt).getTime();
+          if (t <= Date.now() || t > horizonMs) return true; // past or beyond horizon
+          if (seenClassIds.has(c.id)) return true; // still on the timetable
+          if (db.bookings.some((b) => b.classId === c.id)) return true; // someone is booked
+          return false;
+        });
+        prunedClasses = db.classes.length - keep.length;
+        db.classes = keep;
       }
     } catch {
       /* timetable is a bonus — never fail the sync over it */
@@ -696,7 +840,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   return {
     ok: true,
-    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
+    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,

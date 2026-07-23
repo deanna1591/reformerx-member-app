@@ -558,3 +558,89 @@ export async function staffLogout() {
   cookies().delete("rx_admin");
   redirect("/staff/login");
 }
+
+/* ---------- promotions ---------- */
+
+export async function savePromotion(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const id = String(formData.get("id") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return;
+
+  const str = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim();
+    return v.length ? v : undefined;
+  };
+  const dateVal = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim();
+    return v ? new Date(`${v}T00:00:00`).toISOString() : undefined;
+  };
+
+  let imageUrl = str("imageUrl");
+  const file = formData.get("image");
+  if (file && typeof file === "object" && "arrayBuffer" in file && (file as File).size > 0) {
+    const f = file as File;
+    if (f.size <= 1_200_000 && f.type.startsWith("image/")) {
+      imageUrl = `data:${f.type};base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
+    }
+  }
+
+  db.promotions = db.promotions ?? [];
+  const existing = id ? db.promotions.find((x) => x.id === id) : undefined;
+  const fields = {
+    title,
+    subtitle: str("subtitle"),
+    body: str("body"),
+    linkUrl: str("linkUrl"),
+    linkLabel: str("linkLabel"),
+    badge: str("badge"),
+    startsAt: dateVal("startsAt"),
+    endsAt: dateVal("endsAt"),
+    active: formData.get("active") !== null,
+    order: Number(formData.get("order") ?? 0) || 0,
+  };
+
+  if (existing) {
+    Object.assign(existing, fields);
+    if (imageUrl) existing.imageUrl = imageUrl;
+  } else {
+    db.promotions.push({
+      id: `promo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      imageUrl,
+      createdAt: new Date().toISOString(),
+      ...fields,
+    });
+  }
+  saveDB();
+  revalidatePath("/admin/promotions");
+  revalidatePath("/");
+  redirect("/admin/promotions?saved=1");
+}
+
+export async function deletePromotion(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  db.promotions = (db.promotions ?? []).filter((p) => p.id !== String(formData.get("id")));
+  saveDB();
+  revalidatePath("/admin/promotions");
+  revalidatePath("/");
+}
+
+export async function movePromotion(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const promo = (db.promotions ?? []).find((p) => p.id === String(formData.get("id")));
+  if (promo) {
+    promo.order += String(formData.get("dir")) === "up" ? -1.5 : 1.5;
+    db.promotions = (db.promotions ?? [])
+      .sort((a, b) => a.order - b.order)
+      .map((p, i) => ({ ...p, order: i }));
+    saveDB();
+  }
+  revalidatePath("/admin/promotions");
+  revalidatePath("/");
+}

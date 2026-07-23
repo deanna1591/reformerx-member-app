@@ -49,6 +49,22 @@ export interface StudioClass {
 }
 
 /** A pass/package the studio sells (synced from SimplyBook purchase history). */
+export interface Promotion {
+  id: string;
+  title: string;
+  subtitle?: string;
+  body?: string;
+  imageUrl?: string;
+  linkUrl?: string;
+  linkLabel?: string;
+  badge?: string; // e.g. "AUGUST 2026"
+  startsAt?: string; // ISO — hidden before this
+  endsAt?: string; // ISO — hidden after this
+  active: boolean;
+  order: number;
+  createdAt: string;
+}
+
 export interface StudioPackage {
   id: string;
   name: string;
@@ -158,6 +174,7 @@ export interface DB {
   notifications: AppNotification[];
   pushSubs: { memberId: string; sub: unknown }[];
   packages?: StudioPackage[];
+  promotions?: Promotion[];
   loginCodes?: LoginCode[];
   settings: { leaderboardsEnabled: boolean; studioCode: string; lastSync?: string };
 }

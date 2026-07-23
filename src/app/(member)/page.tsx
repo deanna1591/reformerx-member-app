@@ -5,6 +5,7 @@ import { getDB, ensureDB } from "@/lib/store";
 import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage } from "@/lib/engine";
 import { STUDIO_TZ } from "@/lib/time";
 import CarriageProgress from "@/components/CarriageProgress";
+import PromoCarousel from "@/components/PromoCarousel";
 import { markNotificationsRead } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,15 @@ export default async function Home() {
   const db = getDB();
   const active = membershipActive(member);
   const pass = passUsage(member!.id);
+  const nowMs = Date.now();
+  const promos = (db.promotions ?? [])
+    .filter(
+      (p) =>
+        p.active &&
+        (!p.startsAt || new Date(p.startsAt).getTime() <= nowMs) &&
+        (!p.endsAt || new Date(p.endsAt).getTime() >= nowMs)
+    )
+    .sort((a, b) => a.order - b.order);
   const in3Days = Date.now() + 3 * 86400000;
   const upcoming3 = db.bookings
     .filter((b) => b.memberId === member!.id)
@@ -250,6 +260,16 @@ export default async function Home() {
           </div>
         )}
       </section>
+
+      {/* Updates */}
+      {promos.length > 0 && (
+        <section className="rise rise-3 mt-8">
+          <h2 className="font-display text-[22px]">What&apos;s on</h2>
+          <div className="mt-3">
+            <PromoCarousel promos={promos} />
+          </div>
+        </section>
+      )}
 
       {/* Updates */}
       {notifications.length > 0 && (
