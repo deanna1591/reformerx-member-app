@@ -559,7 +559,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      Strategy A: bulk REST endpoints (fast when the account exposes one).
      Strategy B (documented): per-client JSON-RPC getClientMembershipList(clientId). */
   let membershipRows = 0;
-  let membershipSource = "none";
+  let membershipSource = quick ? "skipped (quick sync)" : "none";
   const applyMembership = (clientId: string, cm: SbClientMembership) => {
     const m = db.members.find((x) => x.simplybookId === clientId);
     const endRaw = cm.period_end ?? cm.end_date ?? cm.expire_date ?? cm.date_end;
@@ -576,7 +576,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     membershipRows++;
   };
 
-  let membershipEndpointOk = false;
+  let membershipEndpointOk = quick; // quick runs skip membership work entirely
   for (const path of quick ? [] : ["/admin/clients/memberships?filter[active_only]=1", "/admin/clients/memberships"]) {
     try {
       const rows = await sbAll<SbClientMembership>(path, 20);
@@ -592,7 +592,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
       /* try next */
     }
   }
-  if (!membershipEndpointOk && membershipRows === 0) {
+  if (!quick && !membershipEndpointOk && membershipRows === 0) {
     // Documented route — per client. Keep it fast: only clients with recent/upcoming
     // bookings or an existing app booking history, capped per sync run.
     const interesting = new Set<string>();
