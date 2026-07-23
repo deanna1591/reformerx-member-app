@@ -20,7 +20,8 @@ async function main() {
   }
   console.log("project:", URL_);
 
-  const res = await fetch(`${URL_}/rest/v1/app_state?key=eq.db&select=value,updated_at`, {
+  // New layout: one row per collection. Falls back to the original single row.
+  const res = await fetch(`${URL_}/rest/v1/app_state?key=like.db*&select=key,value,updated_at`, {
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}` },
     cache: "no-store",
   });
@@ -28,7 +29,17 @@ async function main() {
     console.log(`read failed: HTTP ${res.status}`, (await res.text()).slice(0, 200));
     return;
   }
-  const rows = (await res.json()) as Array<{ value: Record<string, unknown[]>; updated_at?: string }>;
+  const raw = (await res.json()) as Array<{ key: string; value: unknown; updated_at?: string }>;
+  const split = raw.filter((r) => r.key.startsWith("db:"));
+  const rows: Array<{ value: Record<string, unknown>; updated_at?: string }> = split.length
+    ? [
+        {
+          value: Object.fromEntries(split.map((r) => [r.key.replace(/^db:/, ""), r.value])),
+          updated_at: split.map((r) => r.updated_at ?? "").sort().reverse()[0],
+        },
+      ]
+    : (raw.filter((r) => r.key === "db") as Array<{ value: Record<string, unknown>; updated_at?: string }>);
+  console.log(split.length ? `layout: ${split.length} collection rows` : "layout: single document (legacy)");
   if (rows.length === 0) {
     console.log("\nNo 'db' row in app_state — the database is empty.");
     console.log("Run a sync to populate it: npx tsx scripts/run-sync.ts");

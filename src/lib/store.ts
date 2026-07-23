@@ -320,7 +320,10 @@ declare global {
 const SUPA_URL = (process.env.SUPABASE_URL ?? "").trim().replace(/\/$/, "");
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
 const hasSupabase = SUPA_URL.length > 0 && SUPA_KEY.length > 0;
-const REFRESH_MS = 3_000; // re-read from Supabase when the cache is older than this.
+// Short cache: Vercel runs several instances, and a stale read here is what
+// makes a just-moved booking look unchanged on the next screen.
+const REFRESH_MS = 3_000;
+
 // Kept short on purpose: several serverless instances serve the app, each with
 // its own copy, so a long window means one member sees a change and another
 // doesn't. Supabase reads are quick, and this is a small price for consistency.
@@ -333,23 +336,104 @@ function supaHeaders() {
   };
 }
 
+/* The database is stored as one row per collection rather than a single
+   document. Booking a class then writes ~100 KB of bookings instead of several
+   megabytes of everything, which is the difference between the app feeling
+   instant and feeling stuck. */
+const COLLECTIONS = [
+  "members",
+  "classes",
+  "bookings",
+  "checkIns",
+  "instructors",
+  "challenges",
+  "challengeProgress",
+  "earnedBadges",
+  "earnedRewards",
+  "notifications",
+  "packages",
+  "promotions",
+  "waitlist",
+  "loginCodes",
+  "settings",
+] as const;
+type Collection = (typeof COLLECTIONS)[number];
+
+/** Serialised form of each collection at the last successful write, so we only
+ *  send back the ones that actually changed. */
+declare global {
+  // eslint-disable-next-line no-var
+  var __rxdbWritten: Partial<Record<Collection, string>> | undefined;
+}
+
+function rowKey(c: Collection) {
+  return `db:${c}`;
+}
+
 async function supaLoad(): Promise<DB | null> {
-  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?key=eq.db&select=value`, {
+  const keys = COLLECTIONS.map((c) => `"${rowKey(c)}"`).join(",");
+  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?key=in.(${keys})&select=key,value`, {
     headers: supaHeaders(),
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Supabase load failed: ${res.status}`);
-  const rows = (await res.json()) as Array<{ value: DB }>;
-  return rows[0]?.value ?? null;
+  const rows = (await res.json()) as Array<{ key: string; value: unknown }>;
+
+  if (rows.length > 0) {
+    const db = seed(); // shape and defaults
+    const written: Partial<Record<Collection, string>> = {};
+    for (const row of rows) {
+      const name = row.key.replace(/^db:/, "") as Collection;
+      if (!COLLECTIONS.includes(name)) continue;
+      (db as unknown as Record<string, unknown>)[name] = row.value;
+      written[name] = JSON.stringify(row.value);
+    }
+    globalThis.__rxdbWritten = written;
+    return db;
+  }
+
+  // Nothing split yet — fall back to the original single-document row and
+  // migrate it on the next write.
+  const legacy = await fetch(`${SUPA_URL}/rest/v1/app_state?key=eq.db&select=value`, {
+    headers: supaHeaders(),
+    cache: "no-store",
+  });
+  if (!legacy.ok) throw new Error(`Supabase load failed: ${legacy.status}`);
+  const legacyRows = (await legacy.json()) as Array<{ value: DB }>;
+  if (legacyRows[0]?.value) {
+    globalThis.__rxdbWritten = {}; // force a full write, which splits it
+    return legacyRows[0].value;
+  }
+  return null;
 }
 
 async function supaSave(db: DB): Promise<void> {
+  const written = globalThis.__rxdbWritten ?? {};
+  const changed: Array<{ key: string; value: unknown; updated_at: string }> = [];
+  const nextWritten: Partial<Record<Collection, string>> = { ...written };
+  const now = new Date().toISOString();
+
+  for (const c of COLLECTIONS) {
+    const value = (db as unknown as Record<string, unknown>)[c];
+    if (value === undefined) continue;
+    const serialised = JSON.stringify(value);
+    if (written[c] === serialised) continue; // untouched — don't send it
+    changed.push({ key: rowKey(c), value, updated_at: now });
+    nextWritten[c] = serialised;
+  }
+
+  if (changed.length === 0) return; // nothing to do
+
   const res = await fetch(`${SUPA_URL}/rest/v1/app_state?on_conflict=key`, {
     method: "POST",
-    headers: { ...supaHeaders(), Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify([{ key: "db", value: db, updated_at: new Date().toISOString() }]),
+    headers: {
+      ...supaHeaders(),
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify(changed),
   });
   if (!res.ok) throw new Error(`Supabase save failed: ${res.status} ${await res.text().catch(() => "")}`);
+  globalThis.__rxdbWritten = nextWritten;
 }
 
 /** Await this at the top of every page/action/route before using getDB(). */
