@@ -320,7 +320,10 @@ declare global {
 const SUPA_URL = (process.env.SUPABASE_URL ?? "").trim().replace(/\/$/, "");
 const SUPA_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
 const hasSupabase = SUPA_URL.length > 0 && SUPA_KEY.length > 0;
-const REFRESH_MS = 30_000; // re-read from Supabase when cache is older than this
+const REFRESH_MS = 3_000; // re-read from Supabase when the cache is older than this.
+// Kept short on purpose: several serverless instances serve the app, each with
+// its own copy, so a long window means one member sees a change and another
+// doesn't. Supabase reads are quick, and this is a small price for consistency.
 
 function supaHeaders() {
   return {
@@ -399,6 +402,29 @@ export function getDB(): DB {
   globalThis.__rxdbLoadedAt = Date.now();
   saveDB();
   return globalThis.__rxdb;
+}
+
+/** Await this after a mutation. Without it the next page render can read
+ *  Supabase before the write has landed, and the member sees stale data. */
+export async function saveDBAsync(): Promise<void> {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(globalThis.__rxdb, null, 2));
+  } catch {
+    /* read-only environments (Vercel): Supabase is the real store there */
+  }
+  if (hasSupabase && globalThis.__rxdb) {
+    if (globalThis.__rxdbRemoteKnown !== true) {
+      console.error("[store] refusing to write: remote state unknown (read failed earlier)");
+      return;
+    }
+    try {
+      await supaSave(globalThis.__rxdb);
+      globalThis.__rxdbLoadedAt = Date.now(); // our copy is now the newest
+    } catch (e) {
+      console.error("[store] save failed:", e);
+    }
+  }
 }
 
 export function saveDB() {
