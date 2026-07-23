@@ -1,5 +1,6 @@
 import { getDB, saveDB } from "./store";
 import { STUDIO_TZ } from "./time";
+import { translate, type Locale, type TranslationKey } from "./i18n";
 import { Challenge, CheckIn, Member } from "./types";
 
 const WINDOW_MIN = 30; // minutes before start / after end
@@ -111,13 +112,13 @@ export function recordAttendance(memberId: string, classId: string) {
         earnedAt: new Date().toISOString(),
         status: "earned",
       });
-      notify(memberId, `🎉 ${ch.name} complete! Your reward — ${ch.reward} — is being prepared. We'll let you know when it's ready at reception.`);
+      notifyKey(memberId, "notif.challengeComplete", { challenge: ch.name, reward: ch.reward });
     }
   }
 
   // Badges
   const newBadges = awardBadges(memberId, checkIn);
-  for (const b of newBadges) notify(memberId, `New badge earned: ${b}`);
+  for (const b of newBadges) notifyKey(memberId, "notif.badge", { badge: b });
 
   return { checkIn, completedChallenges, earnedRewards, newBadges };
 }
@@ -286,6 +287,45 @@ export function notify(memberId: string, text: string) {
     at: new Date().toISOString(),
     read: false,
   });
+}
+
+/** Store a message as a translation key so it renders in the member's language.
+ *  `text` is kept as an English fallback for older clients and for push. */
+export function notifyKey(
+  memberId: string,
+  key: TranslationKey,
+  params?: Record<string, string | number>
+) {
+  const db = getDB();
+  const member = db.members.find((m) => m.id === memberId);
+  const locale: Locale = member?.locale ?? "en";
+  db.notifications.unshift({
+    id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    memberId,
+    text: translate(locale, key, params), // fallback + push copy
+    key,
+    params,
+    at: new Date().toISOString(),
+    read: false,
+  });
+}
+
+/** Render a stored notification in the current UI language. */
+export function renderNotification(n: { text: string; key?: string; params?: Record<string, string | number> }): string {
+  if (!n.key) return n.text;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { cookies } = require("next/headers") as typeof import("next/headers");
+    const locale: Locale = cookies().get("rx_lang")?.value === "cs" ? "cs" : "en";
+    return translate(locale, n.key as TranslationKey, n.params);
+  } catch {
+    return n.text;
+  }
+}
+
+/** The language to use for a member's push message. */
+export function memberLocale(memberId: string): Locale {
+  return getDB().members.find((m) => m.id === memberId)?.locale ?? "en";
 }
 
 /** Lifetime counters shown across the admin console.
@@ -552,7 +592,7 @@ export function offerNextSpot(classId: string): boolean {
     hour: "2-digit",
     minute: "2-digit",
   });
-  notify(next.memberId, `🎟️ A spot opened in ${cls.title} — ${when}. Tap to confirm before it passes to the next member.`);
+  notifyKey(next.memberId, "notif.waitOffer", { title: cls.title, when });
   saveDB();
   return true;
 }

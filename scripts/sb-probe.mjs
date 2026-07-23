@@ -6,7 +6,7 @@ import { readFileSync } from "fs";
 const env = {};
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
-  if (m) env[m[1]] = m[2].split("#")[0].trim().replace(/^["']|["']$/g, "");
+  if (m) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
 }
 const COMPANY = env.SIMPLYBOOK_COMPANY, LOGIN = env.SIMPLYBOOK_LOGIN, KEY = env.SIMPLYBOOK_USER_KEY;
 const REST = "https://user-api-v2.simplybook.it";

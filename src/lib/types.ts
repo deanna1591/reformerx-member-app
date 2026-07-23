@@ -17,6 +17,7 @@ export interface Member {
   joinedAt: string; // ISO date
   qrCode: string; // encoded in personal QR
   simplybookId?: string;
+  locale?: "en" | "cs";
   passName?: string; // exact product name, e.g. "Monthly Unlimited"
   passStart?: string; // ISO — start of the current pass period
   passCredits?: number; // class credits when the pass is a bundle (e.g. 10)
@@ -166,7 +167,11 @@ export interface EarnedReward {
 export interface AppNotification {
   id: string;
   memberId: string;
+  /** Pre-rendered text (legacy / studio announcements). */
   text: string;
+  /** Translation key + params, when the message is app-generated. */
+  key?: string;
+  params?: Record<string, string | number>;
   at: string;
   read: boolean;
 }

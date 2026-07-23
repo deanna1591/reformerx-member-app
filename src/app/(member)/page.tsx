@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers } from "@/lib/engine";
+import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers, renderNotification } from "@/lib/engine";
 import { STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
 import CarriageProgress from "@/components/CarriageProgress";
@@ -308,7 +308,7 @@ export default async function Home() {
           <ul className="mt-3 divide-y divide-line rounded-xl2 border border-line bg-white">
             {notifications.map((n) => (
               <li key={n.id} className={`px-4 py-3 text-[14px] leading-relaxed ${n.read ? "text-smoke" : ""}`}>
-                {n.text}
+                {renderNotification(n)}
               </li>
             ))}
           </ul>
