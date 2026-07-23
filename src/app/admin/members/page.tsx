@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getT } from "@/lib/i18n";
 import { getDB, ensureDB } from "@/lib/store";
 import { fmtDate, membershipActive, memberActivity } from "@/lib/engine";
 import { simulateSimplybookSync } from "@/app/actions";
@@ -20,6 +21,7 @@ export default async function AdminMembers({
 }) {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   const q = (searchParams.q ?? "").trim();
   const status = (["all", "active", "expired", "none"].includes(searchParams.status ?? "")
     ? searchParams.status
@@ -85,13 +87,13 @@ export default async function AdminMembers({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-[32px]">Members</h1>
+        <h1 className="font-display text-[32px]">{t("adm.members")}</h1>
         <form action={simulateSimplybookSync}>
           <SyncButton />
         </form>
       </div>
       <p className="mt-1 text-[13px] text-smoke">
-        Memberships are read from SimplyBook. Active = booked within the last 45 days or upcoming.
+        {t("adm.membersLead")}
       </p>
 
       {db.settings.lastSync && (() => {
@@ -103,7 +105,7 @@ export default async function AdminMembers({
           : "border-line bg-white text-smoke";
         return (
           <div className={`mt-3 rounded-xl border px-4 py-3 text-[13px] ${tone}`}>
-            <span className="font-semibold">Last sync</span> · {new Date(at).toLocaleString()} — {msg}
+            <span className="font-semibold">{t("adm.lastSync")}</span> · {new Date(at).toLocaleString()} — {msg}
           </div>
         );
       })()}
@@ -116,10 +118,10 @@ export default async function AdminMembers({
           <input
             name="q"
             defaultValue={q}
-            placeholder="Search name, email, or member code…"
+            placeholder={t("adm.search")}
             className="!mt-0 flex-1"
           />
-          <button className="rounded-xl border border-line bg-white px-4 text-[13px] font-semibold">Search</button>
+          <button className="rounded-xl border border-line bg-white px-4 text-[13px] font-semibold">{t("adm.searchBtn")}</button>
           {q && (
             <Link href={href({ q: "", page: 1 })} className="grid place-items-center rounded-xl border border-line bg-white px-3 text-[13px] font-semibold text-smoke">
               ✕
@@ -127,10 +129,10 @@ export default async function AdminMembers({
           )}
         </form>
         <div className="flex flex-wrap gap-2">
-          {chip("all", "All")}
-          {chip("active", "Active")}
-          {chip("expired", "Expired")}
-          {chip("none", "No membership")}
+          {chip("all", t("adm.all"))}
+          {chip("active", t("adm.active"))}
+          {chip("expired", t("adm.expired"))}
+          {chip("none", t("adm.noMembership"))}
         </div>
         <form action="/admin/members" method="GET" className="flex items-center gap-2">
           {q && <input type="hidden" name="q" value={q} />}
@@ -140,12 +142,12 @@ export default async function AdminMembers({
             defaultValue={type}
             className="rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold"
           >
-            <option value="all">All types</option>
+            <option value="all">{t("adm.allTypes")}</option>
             {types.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button className="rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">Filter</button>
+          <button className="rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">{t("adm.filter")}</button>
         </form>
       </div>
 
@@ -153,14 +155,14 @@ export default async function AdminMembers({
         <table className="w-full min-w-[880px] text-left text-[14px]">
           <thead className="border-b border-line text-[12px] uppercase tracking-wider text-smoke">
             <tr>
-              <th className="px-4 py-3">Member</th>
-              <th className="px-4 py-3">Membership</th>
-              <th className="px-4 py-3">Expires</th>
-              <th className="px-4 py-3" title="Classes attended (SimplyBook history + app check-ins)">Attended</th>
-              <th className="px-4 py-3" title="QR check-ins in the app">Check-ins</th>
-              <th className="px-4 py-3" title="Challenges joined → completed">Challenges</th>
-              <th className="px-4 py-3">Rewards</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">{t("adm.member")}</th>
+              <th className="px-4 py-3">{t("adm.membership")}</th>
+              <th className="px-4 py-3">{t("adm.expires")}</th>
+              <th className="px-4 py-3" title="Classes attended (SimplyBook history + app check-ins)">{t("adm.attended")}</th>
+              <th className="px-4 py-3" title="QR check-ins in the app">{t("adm.checkIns")}</th>
+              <th className="px-4 py-3" title="Challenges joined → completed">{t("adm.challenges")}</th>
+              <th className="px-4 py-3">{t("adm.rewards")}</th>
+              <th className="px-4 py-3">{t("adm.status")}</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -190,19 +192,19 @@ export default async function AdminMembers({
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${
                       st === "active" ? "bg-spring-green/15 text-spring-green" : st === "none" ? "bg-chalk text-smoke" : "bg-spring-red/15 text-spring-red"
                     }`}>
-                      {st === "active" ? "Active" : st === "none" ? "No membership" : "Expired"}
+                      {st === "active" ? t("adm.active") : st === "none" ? t("adm.noMembership") : t("adm.expired")}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/admin/members/${m.id}`} className="text-[13px] font-semibold text-tan-deep">
-                      Manage →
+                      {t("adm.manage")} →
                     </Link>
                   </td>
                 </tr>
               );
             })}
             {slice.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-[14px] text-smoke">No members match. Clear the search or filters.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[14px] text-smoke">{t("adm.noMatch")}</td></tr>
             )}
           </tbody>
         </table>
@@ -211,14 +213,14 @@ export default async function AdminMembers({
       {/* Pagination */}
       <div className="mt-4 flex items-center justify-between text-[13px]">
         <p className="text-smoke">
-          {list.length} member{list.length === 1 ? "" : "s"} · page {current} of {pages}
+          {list.length} {t("adm.member").toLowerCase()} · {t("adm.pageOf", { page: current, total: pages })}
         </p>
         <div className="flex gap-2">
           {current > 1 && (
-            <Link href={href({ page: current - 1 })} className="rounded-xl border border-line bg-white px-4 py-2 font-semibold">← Prev</Link>
+            <Link href={href({ page: current - 1 })} className="rounded-xl border border-line bg-white px-4 py-2 font-semibold">← {t("adm.prev")}</Link>
           )}
           {current < pages && (
-            <Link href={href({ page: current + 1 })} className="rounded-xl border border-line bg-white px-4 py-2 font-semibold">Next →</Link>
+            <Link href={href({ page: current + 1 })} className="rounded-xl border border-line bg-white px-4 py-2 font-semibold">{t("adm.next")} →</Link>
           )}
         </div>
       </div>

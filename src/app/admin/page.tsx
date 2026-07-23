@@ -1,4 +1,5 @@
 import { getDB, ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 import { computeProgress } from "@/lib/engine";
 import { sendAnnouncement, resetDemoData } from "@/app/actions";
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminOverview() {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
   const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
@@ -37,7 +39,7 @@ export default async function AdminOverview() {
 
   return (
     <div>
-      <h1 className="font-display text-[32px]">Overview</h1>
+      <h1 className="font-display text-[32px]">{t("adm.overview")}</h1>
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpi("Check-ins this week", checkinsWeek)}
         {kpi("Check-ins last 30 days", checkinsMonth)}
@@ -45,15 +47,15 @@ export default async function AdminOverview() {
         {kpi("Rewards to prepare", pending, awaitingPickup ? `${awaitingPickup} awaiting pickup` : undefined)}
       </div>
 
-      <h2 className="mt-10 font-display text-[22px]">Challenge participation</h2>
+      <h2 className="mt-10 font-display text-[22px]">{t("adm.challengeParticipation")}</h2>
       <div className="mt-3 overflow-hidden rounded-xl2 bg-white shadow-card">
         <table className="w-full text-left text-[14px]">
           <thead className="border-b border-line text-[12px] uppercase tracking-wider text-smoke">
             <tr>
-              <th className="px-5 py-3">Challenge</th>
-              <th className="px-5 py-3">Joined</th>
-              <th className="px-5 py-3">Completed</th>
-              <th className="px-5 py-3">Completion rate</th>
+              <th className="px-5 py-3">{t("adm.challenge")}</th>
+              <th className="px-5 py-3">{t("adm.joined")}</th>
+              <th className="px-5 py-3">{t("adm.completed")}</th>
+              <th className="px-5 py-3">{t("adm.completionRate")}</th>
             </tr>
           </thead>
           <tbody>
@@ -71,7 +73,7 @@ export default async function AdminOverview() {
 
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
         <section>
-          <h2 className="font-display text-[22px]">Quiet members (14+ days)</h2>
+          <h2 className="font-display text-[22px]">{t("adm.quietMembers")}</h2>
           <ul className="mt-3 space-y-2">
             {inactive.map((m) => (
               <li key={m.id} className="flex justify-between rounded-xl bg-white px-4 py-3 text-[14px] shadow-card">
@@ -79,17 +81,17 @@ export default async function AdminOverview() {
                 <span className="text-smoke">{m.email}</span>
               </li>
             ))}
-            {inactive.length === 0 && <li className="text-[14px] text-smoke">Everyone has visited recently 🎉</li>}
+            {inactive.length === 0 && <li className="text-[14px] text-smoke">{t("adm.everyoneRecent")} 🎉</li>}
           </ul>
         </section>
         <section>
-          <h2 className="font-display text-[22px]">Send announcement</h2>
+          <h2 className="font-display text-[22px]">{t("adm.sendAnnouncement")}</h2>
           <form action={sendAnnouncement} className="mt-3 space-y-3 rounded-xl2 bg-white p-5 shadow-card">
-            <textarea name="text" rows={3} placeholder="New Saturday 9:00 Power Reformer class starts this week…" />
-            <button className="rounded-xl bg-ink px-5 py-2.5 text-[14px] font-semibold text-white">Send to all members</button>
+            <textarea name="text" rows={3} placeholder="New Saturday 9:00 class starts this week…" />
+            <button className="rounded-xl bg-ink px-5 py-2.5 text-[14px] font-semibold text-white">{t("adm.sendToAll")}</button>
           </form>
           <form action={resetDemoData} className="mt-4">
-            <button className="text-[12px] font-medium text-smoke underline">Reset demo data</button>
+            <button className="text-[12px] font-medium text-smoke underline">{t("adm.resetDemo")}</button>
           </form>
         </section>
       </div>

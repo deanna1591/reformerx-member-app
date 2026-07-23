@@ -1,10 +1,12 @@
 import { staffLogin } from "@/app/actions";
 import { ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
 export default async function StaffLogin({ searchParams }: { searchParams: { error?: string } }) {
   await ensureDB();
+  const t = getT();
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -32,9 +34,14 @@ export default async function StaffLogin({ searchParams }: { searchParams: { err
         {searchParams.error && <p className="text-[13px] text-spring-red">That email and PIN don&apos;t match.</p>}
         <button className="w-full rounded-xl bg-ink py-3.5 text-[15px] font-semibold text-white">Sign in</button>
       </form>
-      <a href="/admin/login" className="mt-6 text-center text-[13px] text-smoke">
-        Studio owner? Use the studio password →
-      </a>
+      <div className="mt-7 grid grid-cols-2 gap-2 border-t border-line pt-5">
+        <a href="/admin/login" className="rounded-xl border border-line bg-white px-3 py-3 text-center text-[13px] font-semibold">
+          Studio owner
+        </a>
+        <a href="/login" className="rounded-xl border border-line bg-white px-3 py-3 text-center text-[13px] font-semibold">
+          {t("login.member")}
+        </a>
+      </div>
     </main>
   );
 }

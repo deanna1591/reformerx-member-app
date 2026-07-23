@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtTime, membershipActive } from "@/lib/engine";
+import { fmtTime, membershipActive, classIsFull, waitlistPosition } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioDayKey, studioDayLabel } from "@/lib/time";
+import { getT } from "@/lib/i18n";
 import { reserveClass } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function SchedulePage({
   const db = getDB();
   const active = membershipActive(member);
   const canBookInApp = inAppBookingEnabled();
+  const t = getT();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -56,9 +58,9 @@ export default async function SchedulePage({
   return (
     <div className="pb-28">
       <header className="rounded-b-[26px] bg-ink px-5 pb-5 pt-[max(1.2rem,env(safe-area-inset-top))] text-white">
-        <h1 className="font-display text-[28px] uppercase tracking-wide">Schedule</h1>
+        <h1 className="font-display text-[28px] uppercase tracking-wide">{t("schedule.title")}</h1>
         <p className="mt-0.5 text-[13px] text-white/60">
-          {active ? `${member.membershipType} · book your spot` : "No active pass — grab one to reserve"}
+          {active ? t("schedule.subtitleActive", { pass: member.membershipType }) : t("schedule.subtitleInactive")}
         </p>
 
         <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1">
@@ -86,18 +88,18 @@ export default async function SchedulePage({
         <form action="/schedule" method="GET" className="flex flex-1 gap-2">
           <input type="hidden" name="d" value={selected} />
           <select name="type" defaultValue={type} className="flex-1 rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">
-            <option value="all">All classes</option>
+            <option value="all">{t("schedule.allClasses")}</option>
             {types.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
           <select name="coach" defaultValue={coach} className="flex-1 rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">
-            <option value="all">All coaches</option>
+            <option value="all">{t("schedule.allCoaches")}</option>
             {coaches.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <button className="rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white">Go</button>
+          <button className="rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white">{t("schedule.filter")}</button>
         </form>
       </div>
 
@@ -111,7 +113,7 @@ export default async function SchedulePage({
               <Link href={`/class/${encodeURIComponent(c.id)}`} className="flex min-w-0 flex-1 items-center gap-3">
               <div className="w-[62px] shrink-0">
                 <p className="font-display text-[17px] leading-none">{fmtTime(c.startsAt)}</p>
-                <p className="mt-1 text-[11px] text-smoke">{c.durationMin} min</p>
+                <p className="mt-1 text-[11px] text-smoke">{c.durationMin} {t("common.min")}</p>
               </div>
               {coach?.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -123,7 +125,12 @@ export default async function SchedulePage({
               )}
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{c.title}</p>
-                <p className="text-[12px] text-smoke">{coachName}</p>
+                <p className="text-[12px] text-smoke">
+                  {coachName}
+                  {typeof c.spotsLeft === "number" && c.spotsLeft > 0 && c.spotsLeft <= 3 && (
+                    <span className="ml-1.5 font-medium text-tan-deep">· {t("schedule.spotsLeft", { n: c.spotsLeft })}</span>
+                  )}
+                </p>
               </div>
               </Link>
               {booked ? (
@@ -131,17 +138,31 @@ export default async function SchedulePage({
                   href={`/class/${encodeURIComponent(c.id)}`}
                   className="rounded-full border border-sage-deep/40 bg-sage-soft px-3.5 py-2 text-[12px] font-semibold text-sage-deep"
                 >
-                  Booked ✓
+                  {t("schedule.booked")} ✓
+                </Link>
+              ) : waitlistPosition(member.id, c.id) ? (
+                <Link
+                  href={`/class/${encodeURIComponent(c.id)}`}
+                  className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-smoke"
+                >
+                  {t("schedule.waitlistPos", { n: waitlistPosition(member.id, c.id)! })}
+                </Link>
+              ) : classIsFull(c.id) ? (
+                <Link
+                  href={`/class/${encodeURIComponent(c.id)}`}
+                  className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white"
+                >
+                  {t("schedule.full")}
                 </Link>
               ) : !active ? (
                 <Link href="/store" className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white">
-                  Get a pass
+                  {t("schedule.getPass")}
                 </Link>
               ) : canBookInApp ? (
                 <form action={reserveClass}>
                   <input type="hidden" name="classId" value={c.id} />
                   <button className="rounded-full bg-sage px-3.5 py-2 text-[12px] font-semibold text-ink transition active:scale-95">
-                    Reserve
+                    {t("schedule.reserve")}
                   </button>
                 </form>
               ) : (
@@ -151,7 +172,7 @@ export default async function SchedulePage({
                   rel="noreferrer"
                   className="rounded-full bg-sage px-3.5 py-2 text-[12px] font-semibold text-ink"
                 >
-                  Reserve ↗
+                  {t("schedule.reserve")} ↗
                 </a>
               )}
             </div>
@@ -160,9 +181,9 @@ export default async function SchedulePage({
 
         {list.length === 0 && (
           <div className="rounded-xl2 bg-card p-8 text-center shadow-card">
-            <p className="font-display text-[20px]">No classes here</p>
+            <p className="font-display text-[20px]">{t("schedule.empty")}</p>
             <p className="mt-1 text-[13px] text-smoke">
-              Try another day or clear the filters.
+              {t("schedule.emptyHint")}
             </p>
           </div>
         )}

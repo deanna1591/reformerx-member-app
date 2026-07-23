@@ -30,7 +30,7 @@ export async function sendEmail(to: string, subject: string, html: string, text?
 }
 
 export function loginCodeEmail(code: string, name: string) {
-  const text = `Hi ${name},\n\nYour ReformerX sign-in code is ${code}\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.\n\nSee you on the reformer.\nReformerX · Haštalská, Prague 1`;
+  const text = `Hi ${name},\n\nYour ReformerX sign-in code is ${code}\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.\n\nSee you at the studio.\nReformerX · Haštalská, Prague 1`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#F2F0EA;padding:32px">
   <div style="max-width:440px;margin:0 auto;background:#FDFCF9;border-radius:20px;padding:32px">
     <p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>

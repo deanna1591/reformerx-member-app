@@ -431,8 +431,18 @@ export function leaderboard(challengeId?: string) {
     .slice(0, 10);
 }
 
+function uiLocale(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { cookies } = require("next/headers") as typeof import("next/headers");
+    return cookies().get("rx_lang")?.value === "cs" ? "cs-CZ" : "en-GB";
+  } catch {
+    return "en-GB";
+  }
+}
+
 export function fmtDate(isoStr: string) {
-  return new Date(isoStr).toLocaleDateString("en-GB", {
+  return new Date(isoStr).toLocaleDateString(uiLocale(), {
     timeZone: STUDIO_TZ,
     day: "numeric",
     month: "short",
@@ -440,9 +450,109 @@ export function fmtDate(isoStr: string) {
   });
 }
 export function fmtTime(isoStr: string) {
-  return new Date(isoStr).toLocaleTimeString("en-GB", {
+  return new Date(isoStr).toLocaleTimeString(uiLocale(), {
     timeZone: STUDIO_TZ,
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/* ------------------------------ waitlist ------------------------------ */
+
+/** How long a member has to claim an offered spot before it rolls on. */
+const OFFER_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+export function classIsFull(classId: string): boolean {
+  const db = getDB();
+  const cls = db.classes.find((c) => c.id === classId);
+  if (!cls) return false;
+  return typeof cls.spotsLeft === "number" && cls.spotsLeft <= 0;
+}
+
+export function waitlistFor(classId: string) {
+  const db = getDB();
+  return (db.waitlist ?? [])
+    .filter((w) => w.classId === classId && (w.status === "waiting" || w.status === "offered"))
+    .sort((a, b) => +new Date(a.joinedAt) - +new Date(b.joinedAt));
+}
+
+/** 1-based queue position, or null when not on the list. */
+export function waitlistPosition(memberId: string, classId: string): number | null {
+  const q = waitlistFor(classId);
+  const i = q.findIndex((w) => w.memberId === memberId);
+  return i === -1 ? null : i + 1;
+}
+
+export function memberWaitlistEntry(memberId: string, classId: string) {
+  return (getDB().waitlist ?? []).find(
+    (w) => w.memberId === memberId && w.classId === classId && (w.status === "waiting" || w.status === "offered")
+  );
+}
+
+/** Offers that are still live for a member — surfaced on the home screen. */
+export function pendingOffers(memberId: string) {
+  expireStaleOffers();
+  const db = getDB();
+  const now = Date.now();
+  return (db.waitlist ?? [])
+    .filter(
+      (w) =>
+        w.memberId === memberId &&
+        w.status === "offered" &&
+        (!w.offerExpiresAt || new Date(w.offerExpiresAt).getTime() > now)
+    )
+    .map((w) => ({ entry: w, cls: db.classes.find((c) => c.id === w.classId) }))
+    .filter((x) => x.cls && new Date(x.cls.startsAt).getTime() > now);
+}
+
+/** Time out unclaimed offers and pass the spot to the next person. */
+export function expireStaleOffers(): number {
+  const db = getDB();
+  const now = Date.now();
+  let expired = 0;
+  for (const w of db.waitlist ?? []) {
+    if (w.status !== "offered") continue;
+    const cls = db.classes.find((c) => c.id === w.classId);
+    const classStarted = cls ? new Date(cls.startsAt).getTime() <= now : true;
+    const windowPassed = w.offerExpiresAt ? new Date(w.offerExpiresAt).getTime() <= now : false;
+    if (windowPassed || classStarted) {
+      w.status = "expired";
+      expired++;
+      if (!classStarted) offerNextSpot(w.classId);
+    }
+  }
+  if (expired) saveDB();
+  return expired;
+}
+
+/** Offer a freed spot to whoever is first in line. Never books automatically —
+ *  the member has to confirm, so nobody is charged a class they can't attend. */
+export function offerNextSpot(classId: string): boolean {
+  const db = getDB();
+  const cls = db.classes.find((c) => c.id === classId);
+  if (!cls) return false;
+  const startsAt = new Date(cls.startsAt).getTime();
+  if (startsAt <= Date.now()) return false;
+
+  const queue = waitlistFor(classId);
+  if (queue.some((w) => w.status === "offered")) return false; // one live offer at a time
+  const next = queue.find((w) => w.status === "waiting");
+  if (!next) return false;
+
+  next.status = "offered";
+  next.offeredAt = new Date().toISOString();
+  // Never let an offer outlive the class itself
+  next.offerExpiresAt = new Date(Math.min(Date.now() + OFFER_WINDOW_MS, startsAt)).toISOString();
+
+  const when = new Date(cls.startsAt).toLocaleString("en-GB", {
+    timeZone: STUDIO_TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  notify(next.memberId, `🎟️ A spot opened in ${cls.title} — ${when}. Tap to confirm before it passes to the next member.`);
+  saveDB();
+  return true;
 }

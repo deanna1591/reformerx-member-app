@@ -2,15 +2,9 @@ import Link from "next/link";
 import { requestLoginCode, verifyLoginCode } from "@/app/actions";
 import { ensureDB } from "@/lib/store";
 import { emailConfigured } from "@/lib/email";
+import { getT } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
-
-const ERRORS: Record<string, string> = {
-  email: "Enter the email you use for booking.",
-  code: "That code doesn't match. Check the digits and try again.",
-  expired: "That code expired — request a fresh one.",
-  rate: "Too many codes requested. Try again in an hour.",
-};
 
 export default async function Login({
   searchParams,
@@ -21,8 +15,15 @@ export default async function Login({
   const step = searchParams.step === "code" ? "code" : "email";
   const email = searchParams.email ?? "";
   const referral = searchParams.referral ?? "";
-  const error = searchParams.error ? ERRORS[searchParams.error] : null;
   const devMode = !emailConfigured();
+  const t = getT();
+  const ERRORS: Record<string, string> = {
+    email: t("login.err.email"),
+    code: t("login.err.code"),
+    expired: t("login.err.expired"),
+    rate: t("login.err.rate"),
+  };
+  const error = searchParams.error ? ERRORS[searchParams.error] : null;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 pb-16">
@@ -31,15 +32,13 @@ export default async function Login({
 
       {step === "email" ? (
         <>
-          <h1 className="mt-2 font-display text-[40px] leading-[1.05]">
-            Your studio,<br />in your pocket.
+          <h1 className="mt-2 whitespace-pre-line font-display text-[40px] leading-[1.05]">
+            {t("login.title")}
           </h1>
-          <p className="mt-3 text-[15px] text-smoke">
-            Sign in with the email you use to book at ReformerX — no new password to remember.
-          </p>
+<p className="mt-3 text-[15px] text-smoke">{t("login.lead")}</p>
           <form action={requestLoginCode} className="mt-8 space-y-3">
             <div>
-              <label htmlFor="email">Email you use for booking</label>
+              <label htmlFor="email">{t("login.emailLabel")}</label>
               <input
                 id="email"
                 name="email"
@@ -53,32 +52,46 @@ export default async function Login({
             </div>
             <div>
               <label htmlFor="referral">
-                Friend&apos;s member code <span className="font-normal text-smoke">(optional, first sign-in only)</span>
+                {t("login.referralLabel")} <span className="font-normal text-smoke">({t("login.referralHint")})</span>
               </label>
               <input id="referral" name="referral" type="text" placeholder="RXM-XXXX-0000" className="mt-1.5" />
             </div>
             {error && <p className="text-[13px] text-spring-red">{error}</p>}
             <button className="w-full rounded-xl bg-ink py-3.5 text-[15px] font-semibold text-white shadow-lift active:scale-[0.98]">
-              Email me a sign-in code
+              {t("login.sendCode")}
             </button>
           </form>
-          <p className="mt-6 text-[13px] leading-relaxed text-smoke">
-            Your account is created automatically from your ReformerX booking profile — membership,
-            class history and your personal QR code are already waiting.
-          </p>
+<p className="mt-6 text-[13px] leading-relaxed text-smoke">{t("login.footnote")}</p>
+
+          <div className="mt-8 border-t border-line pt-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-smoke">{t("login.staffHeading")}</p>
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <Link
+                href="/staff/login"
+                className="rounded-xl border border-line bg-white px-3 py-3 text-center text-[13px] font-semibold"
+              >
+                {t("login.instructor")}
+              </Link>
+              <Link
+                href="/admin/login"
+                className="rounded-xl border border-line bg-white px-3 py-3 text-center text-[13px] font-semibold"
+              >
+                {t("login.owner")}
+              </Link>
+            </div>
+          </div>
         </>
       ) : (
         <>
-          <h1 className="mt-2 font-display text-[36px] leading-[1.05]">Check your email</h1>
+          <h1 className="mt-2 font-display text-[36px] leading-[1.05]">{t("login.checkEmail")}</h1>
           <p className="mt-3 text-[15px] text-smoke">
-            If <span className="font-medium text-ink">{email}</span> is on file at ReformerX, a 6-digit code is on its
-            way. It expires in 10 minutes.
+{t("login.codeSent", { email })}
           </p>
           <form action={verifyLoginCode} className="mt-8 space-y-3">
             <input type="hidden" name="email" value={email} />
             <input type="hidden" name="referral" value={referral} />
             <div>
-              <label htmlFor="code">Sign-in code</label>
+              <label htmlFor="code">{t("login.codeLabel")}</label>
               <input
                 id="code"
                 name="code"
@@ -93,7 +106,7 @@ export default async function Login({
             </div>
             {error && <p className="text-[13px] text-spring-red">{error}</p>}
             <button className="w-full rounded-xl bg-ink py-3.5 text-[15px] font-semibold text-white shadow-lift active:scale-[0.98]">
-              Sign in
+              {t("login.signIn")}
             </button>
           </form>
 
@@ -101,12 +114,12 @@ export default async function Login({
             <input type="hidden" name="email" value={email} />
             <input type="hidden" name="referral" value={referral} />
             <button className="w-full rounded-xl border border-line bg-white py-3 text-[14px] font-semibold">
-              Send a new code
+              {t("login.newCode")}
             </button>
           </form>
 
           <Link href="/login" className="mt-5 text-center text-[13px] text-smoke">
-            Use a different email
+            {t("login.otherEmail")}
           </Link>
 
           {devMode && (

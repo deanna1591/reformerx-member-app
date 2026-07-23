@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { ensureDB } from "@/lib/store";
 import { fmtDate, membershipActive, passUsage } from "@/lib/engine";
-import { memberLogout } from "@/app/actions";
+import { memberLogout, setLanguage } from "@/app/actions";
+import { getT, getLocale, LOCALES, LOCALE_NAMES } from "@/lib/i18n";
 import PushOptIn from "@/components/PushOptIn";
 import ShareButton from "@/components/ShareButton";
 
@@ -15,6 +16,8 @@ export default async function SettingsPage() {
   if (!member) redirect("/login");
   const active = membershipActive(member);
   const pass = passUsage(member.id);
+  const t = getT();
+  const locale = getLocale();
 
   const row = (label: string, value: string) => (
     <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5 last:border-0">
@@ -36,45 +39,66 @@ export default async function SettingsPage() {
   return (
     <div className="pb-28">
       <header className="rounded-b-[26px] bg-ink px-5 pb-6 pt-[max(1.2rem,env(safe-area-inset-top))] text-white">
-        <h1 className="font-display text-[28px] uppercase tracking-wide">Settings</h1>
+        <h1 className="font-display text-[28px] uppercase tracking-wide">{t("settings.title")}</h1>
         <p className="mt-0.5 text-[13px] text-white/60">{member.name}</p>
       </header>
 
       <div className="space-y-4 px-5 pt-5">
         <section className="overflow-hidden rounded-xl2 bg-card shadow-card">
-          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">Account</p>
-          {row("Name", member.name)}
-          {row("Email", member.email)}
-          {row("Member code", member.qrCode)}
-          {row("Member since", fmtDate(member.joinedAt))}
+          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">{t("settings.account")}</p>
+          {row(t("settings.name"), member.name)}
+          {row(t("settings.email"), member.email)}
+          {row(t("settings.memberCode"), member.qrCode)}
+          {row(t("settings.memberSince"), fmtDate(member.joinedAt))}
         </section>
 
         <section className="overflow-hidden rounded-xl2 bg-card shadow-card">
-          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">Membership</p>
-          {row("Pass", active ? pass?.name ?? member.membershipType : "No active pass")}
-          {row("Valid until", active ? fmtDate(member.membershipExpires) : "—")}
-          {active && pass && row("Usage", pass.summary)}
-          {link("/store", "Buy or renew a pass", "Opens the ReformerX shop")}
+          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">{t("pass.membership")}</p>
+          {row(t("settings.pass"), active ? pass?.name ?? member.membershipType : t("pass.none"))}
+          {row(t("settings.validUntil"), active ? fmtDate(member.membershipExpires) : "—")}
+          {active && pass && row(t("settings.usage"), pass.summary)}
+          {link("/store", t("settings.buyRenew"), t("settings.opensShop"))}
         </section>
 
         <section className="overflow-hidden rounded-xl2 bg-card shadow-card">
-          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">Notifications</p>
+          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">{t("settings.language")}</p>
+          <div className="px-5 pb-4 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              {LOCALES.map((l) => (
+                <form key={l} action={setLanguage}>
+                  <input type="hidden" name="lang" value={l} />
+                  <button
+                    className={`w-full rounded-xl px-3 py-3 text-[14px] font-semibold transition ${
+                      locale === l ? "bg-ink text-white" : "border border-line bg-white text-ink"
+                    }`}
+                  >
+                    {LOCALE_NAMES[l]}
+                  </button>
+                </form>
+              ))}
+            </div>
+            <p className="mt-2 text-[12px] text-smoke">{t("settings.languageHint")}</p>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl2 bg-card shadow-card">
+          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">{t("settings.notifications")}</p>
           <div className="px-5 py-4">
             <PushOptIn />
             <p className="mt-2 text-[12px] text-smoke">
-              Class reminders, challenge milestones, and reward pickups.
+              {t("settings.notificationsHint")}
             </p>
           </div>
         </section>
 
         <section className="overflow-hidden rounded-xl2 bg-card shadow-card">
-          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">More</p>
-          {link("/milestones", "Milestones", "Your class clubs and records")}
-          {link("/challenges", "Challenges", "Active studio challenges")}
-          {link("/rewards", "Rewards", "Earned and collected")}
+          <p className="px-5 pb-1 pt-4 text-[11px] uppercase tracking-wider text-smoke">{t("settings.more")}</p>
+          {link("/milestones", t("profile.milestones"), t("settings.milestonesHint"))}
+          {link("/challenges", t("settings.challenges"), t("settings.challengesHint"))}
+          {link("/rewards", t("settings.rewards"), t("settings.rewardsHint"))}
           <div className="px-5 py-4">
             <ShareButton
-              label="Invite a friend"
+              label={t("profile.invite")}
               text={`Join me at ReformerX — use my member code ${member.qrCode} when you sign up.`}
             />
           </div>
@@ -82,7 +106,7 @@ export default async function SettingsPage() {
 
         <form action={memberLogout}>
           <button className="w-full rounded-xl2 bg-white py-4 text-[14px] font-semibold text-spring-red shadow-card">
-            Sign out
+            {t("common.signOut")}
           </button>
         </form>
 

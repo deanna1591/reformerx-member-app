@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDB, saveDB, ensureDB, resetDB } from "@/lib/store";
-import { performCheckIn, notify, CheckInResult } from "@/lib/engine";
+import { performCheckIn, notify, notifyKey, CheckInResult } from "@/lib/engine";
 import { currentMember } from "@/lib/auth";
 import { Member, Challenge } from "@/lib/types";
 
@@ -52,12 +52,28 @@ export async function verifyLoginCode(formData: FormData) {
   const member = db.members.find((m) => m.email.toLowerCase() === email);
   if (!member) back("code");
 
-  // Referral capture: first sign-in only, before any classes
-  if (referral && !member!.referredBy && !db.checkIns.some((ci) => ci.memberId === member!.id)) {
+  // Referral capture — only for genuinely new members (no class history at all),
+  // and never self-referral. Existing members can't claim a code retroactively.
+  if (referral && !member!.referredBy) {
+    const { attendedClasses } = await import("@/lib/engine");
+    const isNew = attendedClasses(member!.id).length === 0;
     const referrer = db.members.find((m) => m.qrCode.toUpperCase() === referral && m.id !== member!.id);
-    if (referrer) {
+    if (isNew && referrer) {
       member!.referredBy = referrer.id;
-      notify(referrer.id, `🤝 ${member!.name.split(" ")[0]} joined with your code! Their first check-in counts toward Bring a Friend.`);
+      notifyKey(referrer.id, "notif.referralJoined", { name: member!.name.split(" ")[0] });
+      notifyKey(member!.id, "notif.referralWelcome", { name: referrer.name.split(" ")[0] });
+      saveDB();
+      const { sendPush } = await import("@/lib/push");
+      {
+        const { translate } = await import("@/lib/i18n");
+        const { memberLocale } = await import("@/lib/engine");
+        void sendPush(
+          referrer.id,
+          translate(memberLocale(referrer.id), "notif.referralJoined", { name: member!.name.split(" ")[0] })
+        );
+      }
+    } else if (referral && !referrer) {
+      notifyKey(member!.id, "notif.referralNotFound", { code: referral });
       saveDB();
     }
   }
@@ -239,7 +255,7 @@ export async function extendMembership(memberId: string, days: number) {
   if (!m) return;
   const base = Math.max(Date.now(), new Date(m.membershipExpires).getTime());
   m.membershipExpires = new Date(base + days * 86400000).toISOString();
-  notify(memberId, `Your membership was extended to ${new Date(m.membershipExpires).toLocaleDateString("en-GB")}. See you on the reformer!`);
+  notifyKey(memberId, "notif.membershipExtended", { date: new Date(m.membershipExpires).toLocaleDateString("en-GB") });
   saveDB();
   revalidatePath(`/admin/members/${memberId}`);
   revalidatePath("/admin/members");
@@ -250,7 +266,7 @@ export async function sendMemberMessage(memberId: string, formData: FormData) {
   requireAdmin();
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return;
-  notify(memberId, `💬 ${text}`);
+  notifyKey(memberId, "notif.staffMessage", { text });
   saveDB();
   const { sendPush } = await import("@/lib/push");
   void sendPush(memberId, text);
@@ -362,7 +378,7 @@ export async function reserveClass(formData: FormData) {
 
   const { createSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
   if (!inAppBookingEnabled() || !cls.serviceId || !member.simplybookId) {
-    notify(member.id, "Reservations are handled on the ReformerX booking page for now.");
+    notifyKey(member.id, "notif.bookExternally");
     saveDB();
     return;
   }
@@ -383,9 +399,9 @@ export async function reserveClass(formData: FormData) {
       simplybookBookingId: res.id,
       bookedAt: new Date().toISOString(),
     });
-    notify(member.id, `Booked: ${cls.title} on ${new Date(cls.startsAt).toLocaleString()}`);
+    notifyKey(member.id, "notif.booked", { title: cls.title, when: new Date(cls.startsAt).toLocaleString() });
   } else {
-    notify(member.id, `Could not reserve ${cls.title}: ${res.message}`);
+    notifyKey(member.id, "notif.bookingFailed", { title: cls.title, reason: res.message });
   }
   saveDB();
   revalidatePath("/schedule");
@@ -405,15 +421,33 @@ export async function cancelReservation(formData: FormData) {
     const { cancelSimplybookBooking } = await import("@/lib/simplybook");
     const res = await cancelSimplybookBooking(booking.simplybookBookingId);
     if (!res.ok) {
-      notify(member.id, `Could not cancel: ${res.message}`);
+      notifyKey(member.id, "notif.cancelFailed", { reason: res.message });
       saveDB();
       return;
     }
   }
   db.bookings = db.bookings.filter((b) => b !== booking);
   const cls = db.classes.find((c) => c.id === classId);
-  notify(member.id, `Cancelled: ${cls?.title ?? "class"}`);
+  if (cls && typeof cls.spotsLeft === "number") cls.spotsLeft += 1;
+  notifyKey(member.id, "notif.cancelled", { title: cls?.title ?? "class" });
   saveDB();
+
+  // Hand the freed spot to the next person waiting
+  const { offerNextSpot } = await import("@/lib/engine");
+  if (offerNextSpot(classId)) {
+    const next = (getDB().waitlist ?? []).find((w) => w.classId === classId && w.status === "offered");
+    if (next) {
+      const { sendPush } = await import("@/lib/push");
+      {
+        const { translate } = await import("@/lib/i18n");
+        const { memberLocale } = await import("@/lib/engine");
+        void sendPush(
+          next.memberId,
+          translate(memberLocale(next.memberId), "notif.waitOffer", { title: cls?.title ?? "class", when: "" })
+        );
+      }
+    }
+  }
   revalidatePath("/schedule");
   revalidatePath("/");
 }
@@ -452,7 +486,7 @@ export async function rescheduleClass(formData: FormData) {
 
   booking.classId = toId;
   booking.bookedAt = new Date().toISOString();
-  notify(member.id, `Moved to ${target.title} on ${new Date(target.startsAt).toLocaleString()}`);
+  notifyKey(member.id, "notif.moved", { title: target.title, when: new Date(target.startsAt).toLocaleString() });
   saveDB();
   revalidatePath("/schedule");
   revalidatePath(`/class/${toId}`);
@@ -643,4 +677,169 @@ export async function movePromotion(formData: FormData) {
   }
   revalidatePath("/admin/promotions");
   revalidatePath("/");
+}
+
+/* ---------- waitlist ---------- */
+
+export async function joinWaitlist(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const cls = db.classes.find((c) => c.id === classId);
+  if (!cls) return;
+
+  const { memberWaitlistEntry } = await import("@/lib/engine");
+  if (memberWaitlistEntry(member.id, classId)) return; // already queued
+  if (db.bookings.some((b) => b.memberId === member.id && b.classId === classId)) return; // already booked
+
+  db.waitlist = db.waitlist ?? [];
+  db.waitlist.push({
+    id: `wl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    memberId: member.id,
+    classId,
+    joinedAt: new Date().toISOString(),
+    status: "waiting",
+  });
+  notifyKey(member.id, "notif.waitJoined", { title: cls.title });
+  saveDB();
+  revalidatePath(`/class/${classId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/");
+}
+
+export async function leaveWaitlist(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const entry = (db.waitlist ?? []).find(
+    (w) => w.memberId === member.id && w.classId === classId && (w.status === "waiting" || w.status === "offered")
+  );
+  if (!entry) return;
+  const wasOffered = entry.status === "offered";
+  db.waitlist = (db.waitlist ?? []).filter((w) => w.id !== entry.id);
+  saveDB();
+  if (wasOffered) {
+    const { offerNextSpot } = await import("@/lib/engine");
+    offerNextSpot(classId); // pass the spot straight on
+  }
+  revalidatePath(`/class/${classId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/");
+}
+
+export async function confirmWaitlistOffer(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const cls = db.classes.find((c) => c.id === classId);
+  const entry = (db.waitlist ?? []).find(
+    (w) => w.memberId === member.id && w.classId === classId && w.status === "offered"
+  );
+  if (!cls || !entry) return;
+
+  if (entry.offerExpiresAt && new Date(entry.offerExpiresAt).getTime() < Date.now()) {
+    entry.status = "expired";
+    notifyKey(member.id, "notif.waitExpired", { title: cls.title });
+    saveDB();
+    const { offerNextSpot } = await import("@/lib/engine");
+    offerNextSpot(classId);
+    revalidatePath(`/class/${classId}`);
+    return;
+  }
+
+  const { createSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
+  if (inAppBookingEnabled() && member.simplybookId && cls.serviceId) {
+    const res = await createSimplybookBooking({
+      clientId: member.simplybookId,
+      serviceId: cls.serviceId,
+      unitId: cls.unitId,
+      startsAt: cls.startsAt,
+      durationMin: cls.durationMin,
+    });
+    if (!res.ok) {
+      notifyKey(member.id, "notif.waitClaimFailed", { reason: res.message });
+      saveDB();
+      revalidatePath(`/class/${classId}`);
+      return;
+    }
+    db.bookings.push({
+      id: `b-wl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      memberId: member.id,
+      classId,
+      source: "app",
+      simplybookBookingId: res.id,
+      bookedAt: new Date().toISOString(),
+    });
+  } else {
+    db.bookings.push({
+      id: `b-wl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      memberId: member.id,
+      classId,
+      source: "app",
+      bookedAt: new Date().toISOString(),
+    });
+  }
+
+  entry.status = "confirmed";
+  if (typeof cls.spotsLeft === "number") cls.spotsLeft = Math.max(0, cls.spotsLeft - 1);
+  notifyKey(member.id, "notif.waitConfirmed", { title: cls.title });
+  saveDB();
+  revalidatePath(`/class/${classId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/");
+  redirect(`/class/${encodeURIComponent(classId)}`);
+}
+
+export async function declineWaitlistOffer(formData: FormData) {
+  await ensureDB();
+  const member = currentMember();
+  if (!member) redirect("/login");
+  const classId = String(formData.get("classId") ?? "");
+  const db = getDB();
+  const entry = (db.waitlist ?? []).find(
+    (w) => w.memberId === member.id && w.classId === classId && w.status === "offered"
+  );
+  if (!entry) return;
+  entry.status = "declined";
+  saveDB();
+  const { offerNextSpot } = await import("@/lib/engine");
+  offerNextSpot(classId);
+  revalidatePath(`/class/${classId}`);
+  revalidatePath("/");
+}
+
+/* ---------- language ---------- */
+
+export async function setLanguage(formData: FormData) {
+  await ensureDB();
+  const lang = String(formData.get("lang") ?? "en");
+  const value = lang === "cs" ? "cs" : "en";
+  cookies().set("rx_lang", value, { sameSite: "lax", maxAge: 60 * 60 * 24 * 365, path: "/" });
+  const member = currentMember();
+  if (member) {
+    const m = getDB().members.find((x) => x.id === member.id);
+    if (m) {
+      m.locale = value;
+      saveDB();
+    }
+  }
+  revalidatePath("/", "layout");
+  redirect("/settings");
+}
+
+export async function setAdminLanguage(formData: FormData) {
+  const lang = String(formData.get("lang") ?? "en");
+  cookies().set("rx_lang", lang === "cs" ? "cs" : "en", {
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+  });
+  revalidatePath("/admin", "layout");
+  redirect("/admin");
 }

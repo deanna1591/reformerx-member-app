@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage } from "@/lib/engine";
+import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers } from "@/lib/engine";
 import { STUDIO_TZ } from "@/lib/time";
+import { getT } from "@/lib/i18n";
 import CarriageProgress from "@/components/CarriageProgress";
 import PromoCarousel from "@/components/PromoCarousel";
 import { markNotificationsRead } from "@/app/actions";
@@ -16,7 +17,9 @@ export default async function Home() {
   if (!member) redirect("/login");
   const db = getDB();
   const active = membershipActive(member);
+  const t = getT();
   const pass = passUsage(member!.id);
+  const offers = pendingOffers(member!.id);
   const nowMs = Date.now();
   const promos = (db.promotions ?? [])
     .filter(
@@ -69,7 +72,7 @@ export default async function Home() {
       <header className="rise flex items-start justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-tan-deep">ReformerX · Prague 1</p>
-          <h1 className="mt-1 font-display text-[34px] leading-none">Hello, {firstName}</h1>
+          <h1 className="mt-1 font-display text-[34px] leading-none">{t("home.greeting", { name: firstName })}</h1>
         </div>
         {streak > 0 && (
           <div className="mt-0.5 min-w-[46px] rounded-full bg-ink px-2 pb-2 pt-2.5 text-center text-chalk">
@@ -88,7 +91,7 @@ export default async function Home() {
               <p className="truncate text-[13px] font-semibold leading-snug">
                 {readyRewards.length === 1 ? `${readyRewards[0].reward} — ready!` : `${readyRewards.length} rewards ready!`}
               </p>
-              <p className="text-[11.5px] text-ink/60">Waiting at reception</p>
+              <p className="text-[11.5px] text-ink/60">{t("home.waitingReception")}</p>
             </div>
             <span aria-hidden className="text-[15px]">→</span>
           </div>
@@ -116,17 +119,17 @@ export default async function Home() {
                 </Link>
               ) : (
                 <>
-                  <span className="block rounded-full bg-white/10 py-3.5 font-display text-[14px] tracking-[0.14em] text-white/50">Check in</span>
-                  <p className="mt-2.5 text-[10px] text-white/40">Opens 30 minutes before class</p>
+                  <span className="block rounded-full bg-white/10 py-3.5 font-display text-[14px] tracking-[0.14em] text-white/50">{t("home.checkIn")}</span>
+                  <p className="mt-2.5 text-[10px] text-white/40">{t("home.checkInHint")}</p>
                 </>
               )}
             </div>
           </>
         ) : (
           <>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-sage">Next class</p>
-            <p className="mt-3 font-display text-[26px] leading-tight">Nothing booked</p>
-            <p className="mt-1 text-[13px] text-white/60">Reserve a class to keep the carriage moving.</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.26em] text-sage">{t("home.nextClassShort")}</p>
+            <p className="mt-3 font-display text-[26px] leading-tight">{t("home.nothingBooked")}</p>
+            <p className="mt-1 text-[13px] text-white/60">{t("home.reserveHint")}</p>
             <a
               href="https://www.reformerx.cz/booking/"
               target="_blank"
@@ -186,9 +189,9 @@ export default async function Home() {
       {upcoming3.length > 0 && (
         <section className="rise rise-2 mt-6">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-[22px]">Next 3 days</h2>
+            <h2 className="font-display text-[22px]">{t("home.next3days")}</h2>
             <Link href="/schedule" className="text-[13px] font-semibold text-tan-deep">
-              Full schedule →
+              {t("home.fullSchedule")} →
             </Link>
           </div>
           <div className="mt-3 space-y-2">
@@ -208,7 +211,7 @@ export default async function Home() {
                   <p className="truncate font-semibold">{cls.title}</p>
                   <p className="text-[12px] text-smoke">{coach}</p>
                 </div>
-                <span className="shrink-0 text-[12px] font-semibold text-tan-deep">Manage →</span>
+                <span className="shrink-0 text-[12px] font-semibold text-tan-deep">{t("home.manage")} →</span>
               </Link>
             ))}
           </div>
@@ -218,16 +221,16 @@ export default async function Home() {
       {/* Challenges */}
       <section className="rise rise-3 mt-7">
         <div className="flex items-baseline justify-between">
-          <h2 className="font-display text-[22px]">Your challenges</h2>
+          <h2 className="font-display text-[22px]">{t("home.challenges")}</h2>
           <Link href="/challenges" className="text-[13px] font-semibold text-tan-deep">
-            See all →
+            {t("common.seeAll")} →
           </Link>
         </div>
         {myChallenges.length === 0 ? (
           <div className="mt-3 rounded-xl2 border border-dashed border-line bg-white p-5 text-center">
-            <p className="text-[14px] text-smoke">No active challenges — pick one and put a reward on the table.</p>
+            <p className="text-[14px] text-smoke">{t("home.noChallenges")}</p>
             <Link href="/challenges" className="mt-2 inline-block text-[14px] font-semibold text-tan-deep">
-              Browse challenges →
+              {t("home.browseChallenges")} →
             </Link>
           </div>
         ) : (
@@ -262,9 +265,27 @@ export default async function Home() {
       </section>
 
       {/* Updates */}
+      {offers.length > 0 && (
+        <section className="rise rise-2 mt-6 space-y-2">
+          {offers.map(({ entry, cls }) => (
+            <Link
+              key={entry.id}
+              href={`/class/${encodeURIComponent(cls!.id)}`}
+              className="block rounded-xl2 bg-ink p-4 text-white shadow-card"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">{t("home.spotAvailable")}</p>
+              <p className="mt-1 font-display text-[19px] leading-tight">{cls!.title}</p>
+              <p className="mt-0.5 text-[13px] text-white/70">
+                {fmtDate(cls!.startsAt)} · {fmtTime(cls!.startsAt)} — {t("home.spotTapToConfirm")}
+              </p>
+            </Link>
+          ))}
+        </section>
+      )}
+
       {promos.length > 0 && (
         <section className="rise rise-3 mt-8">
-          <h2 className="font-display text-[22px]">What&apos;s on</h2>
+          <h2 className="font-display text-[22px]">{t("home.whatsOn")}</h2>
           <div className="mt-3">
             <PromoCarousel promos={promos} />
           </div>
@@ -280,7 +301,7 @@ export default async function Home() {
             </h2>
             {unread && (
               <form action={markNotificationsRead}>
-                <button className="text-[13px] font-semibold text-tan-deep">Mark read</button>
+                <button className="text-[13px] font-semibold text-tan-deep">{t("home.markRead2")}</button>
               </form>
             )}
           </div>

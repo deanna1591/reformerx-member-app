@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtTime, membershipActive } from "@/lib/engine";
+import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioLongDate, STUDIO_TZ } from "@/lib/time";
-import { reserveClass, cancelReservation, rescheduleClass } from "@/app/actions";
+import { getT } from "@/lib/i18n";
+import { reserveClass, cancelReservation, rescheduleClass, joinWaitlist, leaveWaitlist, confirmWaitlistOffer, declineWaitlistOffer } from "@/app/actions";
 import ConfirmButton from "@/components/ConfirmButton";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,15 @@ export default async function ClassDetail({ params }: { params: { id: string } }
   const booked = db.bookings.some((b) => b.memberId === member.id && b.classId === cls.id);
   const isPast = start.getTime() < Date.now();
   const checkedIn = db.checkIns.some((ci) => ci.memberId === member.id && ci.classId === cls.id);
+  const isFull = classIsFull(cls.id);
+  const queue = waitlistFor(cls.id);
+  const myEntry = memberWaitlistEntry(member.id, cls.id);
+  const myPosition = waitlistPosition(member.id, cls.id);
+  const offerLive =
+    myEntry?.status === "offered" &&
+    (!myEntry.offerExpiresAt || new Date(myEntry.offerExpiresAt).getTime() > Date.now());
 
+  const t = getT();
   const dateLabel = studioLongDate(start);
   const endsAt = new Date(start.getTime() + cls.durationMin * 60000);
 
@@ -57,16 +66,19 @@ export default async function ClassDetail({ params }: { params: { id: string } }
   return (
     <div className="pb-28">
       <header className="rounded-b-[26px] bg-ink px-5 pb-6 pt-[max(1.2rem,env(safe-area-inset-top))] text-white">
-        <Link href="/schedule" className="text-[13px] text-white/60">← Schedule</Link>
+        <Link href="/schedule" className="text-[13px] text-white/60">← {t("schedule.title")}</Link>
         <p className="mt-3 text-[12px] uppercase tracking-[0.18em] text-white/55">{dateLabel}</p>
         <h1 className="mt-1 font-display text-[30px] uppercase leading-tight tracking-wide">{cls.title}</h1>
         <p className="mt-1.5 text-[14px] text-white/70">
-          {fmtTime(cls.startsAt)}–{fmtTime(endsAt.toISOString())} · {cls.durationMin} min
+          {fmtTime(cls.startsAt)}–{fmtTime(endsAt.toISOString())} · {cls.durationMin} {t("common.min")}
+          {typeof cls.spotsLeft === "number" && !isPast && (
+            <> · {isFull ? t("class.full") : cls.spotsLeft === 1 ? t("class.oneSpotLeft") : t("class.spotsLeft", { n: cls.spotsLeft! })}</>
+          )}
         </p>
 
         {booked && (
           <span className="mt-3 inline-block rounded-full bg-sage px-3 py-1.5 text-[12px] font-semibold text-ink">
-            {checkedIn ? "Checked in ✓" : "You're booked ✓"}
+            {checkedIn ? `${t("class.checkedIn")} ✓` : `${t("class.youreBooked")} ✓`}
           </span>
         )}
       </header>
@@ -90,15 +102,41 @@ export default async function ClassDetail({ params }: { params: { id: string } }
           {coach?.bio && <p className="mt-3 text-[13px] leading-relaxed text-smoke">{coach.bio}</p>}
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4 text-[13px]">
             <div>
-              <p className="text-smoke">Studio</p>
+              <p className="text-smoke">{t("class.studio")}</p>
               <p className="mt-0.5 font-medium">Haštalská, Prague 1</p>
             </div>
             <div>
-              <p className="text-smoke">Your pass</p>
-              <p className="mt-0.5 font-medium">{active ? member.membershipType : "No active pass"}</p>
+              <p className="text-smoke">{t("class.yourPass")}</p>
+              <p className="mt-0.5 font-medium">{active ? member.membershipType : t("pass.none")}</p>
             </div>
           </div>
         </section>
+
+        {/* Waitlist offer — needs confirming, never auto-books */}
+        {offerLive && !isPast && (
+          <section className="rounded-xl2 bg-ink p-5 text-white shadow-card">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">{t("wait.spotOpened")}</p>
+            <p className="mt-2 text-[14px] leading-relaxed text-white/85">
+              {t("wait.offerBody", {
+                until: myEntry?.offerExpiresAt ? t("wait.until", { time: fmtTime(myEntry.offerExpiresAt) }) : "",
+              })}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <form action={confirmWaitlistOffer}>
+                <input type="hidden" name="classId" value={cls.id} />
+                <button className="w-full rounded-xl bg-sage py-3 text-[14px] font-semibold text-ink">
+                  {t("wait.confirmSpot")}
+                </button>
+              </form>
+              <form action={declineWaitlistOffer}>
+                <input type="hidden" name="classId" value={cls.id} />
+                <button className="w-full rounded-xl border border-white/25 py-3 text-[14px] font-semibold text-white/80">
+                  {t("wait.noThanks")}
+                </button>
+              </form>
+            </div>
+          </section>
+        )}
 
         {/* Primary actions */}
         {!isPast && (
@@ -110,7 +148,7 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                     href={`/api/calendar/${encodeURIComponent(cls.id)}`}
                     className="rounded-xl2 bg-ink py-3.5 text-center text-[14px] font-semibold text-white"
                   >
-                    Add to calendar
+                    {t("class.addCalendar")}
                   </a>
                   <a
                     href={gcalUrl}
@@ -118,28 +156,49 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                     rel="noreferrer"
                     className="rounded-xl2 border border-line bg-white py-3.5 text-center text-[14px] font-semibold"
                   >
-                    Google Calendar
+                    {t("class.googleCalendar")}
                   </a>
                 </div>
                 <form action={cancelReservation}>
                   <input type="hidden" name="classId" value={cls.id} />
                   <ConfirmButton
-                    message={`Cancel your spot in ${cls.title} on ${dateLabel}?`}
+                    message={t("class.cancelConfirm", { title: cls.title, date: dateLabel })}
                     className="w-full rounded-xl2 bg-white py-3.5 text-[14px] font-semibold text-spring-red shadow-card"
                   >
-                    Cancel this booking
+                    {t("class.cancelBooking")}
                   </ConfirmButton>
                 </form>
               </>
             ) : !active ? (
               <Link href="/store" className="block rounded-xl2 bg-ink py-4 text-center text-[15px] font-semibold text-white">
-                Get a pass to book
+                {t("class.getPassToBook")}
               </Link>
+            ) : isFull && !offerLive ? (
+              myEntry ? (
+                <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
+                  <p className="font-display text-[18px]">{t("wait.youreOn")}</p>
+                  <p className="mt-1 text-[13px] text-smoke">
+                    {t("wait.position", { pos: myPosition!, total: queue.length })}
+                  </p>
+                  <form action={leaveWaitlist} className="mt-3">
+                    <input type="hidden" name="classId" value={cls.id} />
+                    <button className="text-[13px] font-semibold text-spring-red">{t("wait.leave")}</button>
+                  </form>
+                </div>
+              ) : (
+                <form action={joinWaitlist}>
+                  <input type="hidden" name="classId" value={cls.id} />
+                  <button className="w-full rounded-xl2 bg-ink py-4 text-[15px] font-semibold text-white">
+                    {t("wait.joinFull")}
+                    {queue.length > 0 && <span className="ml-1 font-normal text-white/60">{t("wait.waitingCount", { n: queue.length })}</span>}
+                  </button>
+                </form>
+              )
             ) : canBookInApp ? (
               <form action={reserveClass}>
                 <input type="hidden" name="classId" value={cls.id} />
                 <button className="w-full rounded-xl2 bg-sage py-4 text-[15px] font-semibold text-ink transition active:scale-[0.99]">
-                  Reserve this class
+                  {t("class.reserveThis")}
                 </button>
               </form>
             ) : (
@@ -149,7 +208,7 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                 rel="noreferrer"
                 className="block rounded-xl2 bg-sage py-4 text-center text-[15px] font-semibold text-ink"
               >
-                Reserve on ReformerX ↗
+                {t("class.reserveExternal")} ↗
               </a>
             )}
           </section>
@@ -158,9 +217,9 @@ export default async function ClassDetail({ params }: { params: { id: string } }
         {/* Reschedule */}
         {booked && !isPast && alternatives.length > 0 && (
           <section className="rounded-xl2 bg-card p-5 shadow-card">
-            <h2 className="font-display text-[19px]">Move to another time</h2>
+            <h2 className="font-display text-[19px]">{t("class.moveTitle")}</h2>
             <p className="mt-1 text-[12px] text-smoke">
-              Your spot moves in one step — the new class is reserved before the old one is released.
+              {t("class.moveHint")}
             </p>
             <div className="mt-3 space-y-2">
               {alternatives.map((alt) => {
@@ -177,10 +236,10 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                       <p className="text-[12px] text-smoke">{altCoach ?? "ReformerX"}</p>
                     </div>
                     <ConfirmButton
-                      message={`Move your booking to ${d.toLocaleString("en-GB", { timeZone: STUDIO_TZ })}?`}
+                      message={t("class.moveConfirm", { when: d.toLocaleString("en-GB", { timeZone: STUDIO_TZ }) })}
                       className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white"
                     >
-                      Move here
+                      {t("class.moveHere")}
                     </ConfirmButton>
                   </form>
                 );
@@ -191,9 +250,9 @@ export default async function ClassDetail({ params }: { params: { id: string } }
 
         {isPast && (
           <section className="rounded-xl2 bg-card p-5 text-center shadow-card">
-            <p className="font-display text-[18px]">{checkedIn ? "You made it 🎉" : "This class has finished"}</p>
+            <p className="font-display text-[18px]">{checkedIn ? `${t("class.youMadeIt")} 🎉` : t("class.finished")}</p>
             <p className="mt-1 text-[13px] text-smoke">
-              {checkedIn ? "Counted towards your challenges and milestones." : "Book your next one from the schedule."}
+              {checkedIn ? t("class.countedTowards") : t("class.bookNext")}
             </p>
           </section>
         )}

@@ -1,4 +1,5 @@
 import { getDB, ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 import { savePromotion, deletePromotion, movePromotion } from "@/app/actions";
 import { fmtDate } from "@/lib/engine";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -8,20 +9,21 @@ export const dynamic = "force-dynamic";
 export default async function PromotionsPage({ searchParams }: { searchParams: { edit?: string; saved?: string } }) {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   const promos = (db.promotions ?? []).sort((a, b) => a.order - b.order);
   const editing = searchParams.edit ? promos.find((p) => p.id === searchParams.edit) : undefined;
   const dateInput = (iso?: string) => (iso ? iso.slice(0, 10) : "");
 
   return (
     <div className="max-w-4xl">
-      <h1 className="font-display text-[32px]">What&apos;s on</h1>
+      <h1 className="font-display text-[32px]">{t("adm.promotions")}</h1>
       <p className="mt-1 text-[13px] text-smoke">
         Promotions, camps, retreats and events. These appear as a swipeable carousel on the member home screen,
         below their challenges.
       </p>
 
       {searchParams.saved && (
-        <div className="mt-4 rounded-xl border border-spring-green/40 bg-spring-green/10 px-4 py-3 text-[13px]">Saved.</div>
+        <div className="mt-4 rounded-xl border border-spring-green/40 bg-spring-green/10 px-4 py-3 text-[13px]">{t("adm.saved")}</div>
       )}
 
       <section className="mt-5 rounded-xl2 bg-white p-5 shadow-card">

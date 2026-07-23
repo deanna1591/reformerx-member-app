@@ -173,7 +173,7 @@ function seed(): DB {
         id: "ch-streak7",
         name: "7-Day Streak",
         emoji: "🔥",
-        description: "One class every day for 7 consecutive days. The carriage never stops.",
+        description: "One class every day for 7 consecutive days. No days off.",
         type: "streak_days",
         goal: 7,
         reward: "Free class credit",
@@ -259,7 +259,7 @@ function seed(): DB {
       { memberId: "m-you", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
     ],
     badgeDefs: [
-      { id: "bd-first", name: "First Carriage Ride", emoji: "🚃", description: "Your very first class at ReformerX." },
+      { id: "bd-first", name: "First Class", emoji: "✨", description: "Your very first class at ReformerX." },
       { id: "bd-early", name: "Early Bird", emoji: "🌅", description: "Checked in to a class before 9:00." },
       { id: "bd-weekend", name: "Weekend Warrior", emoji: "🛡️", description: "5 weekend classes completed." },
       { id: "bd-10", name: "10 Classes", emoji: "🔟", description: "Ten classes done." },

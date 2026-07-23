@@ -49,6 +49,17 @@ export interface StudioClass {
 }
 
 /** A pass/package the studio sells (synced from SimplyBook purchase history). */
+export interface WaitlistEntry {
+  id: string;
+  memberId: string;
+  classId: string;
+  joinedAt: string;
+  /** waiting → offered (spot free, awaiting confirmation) → confirmed | declined | expired */
+  status: "waiting" | "offered" | "confirmed" | "declined" | "expired";
+  offeredAt?: string;
+  offerExpiresAt?: string;
+}
+
 export interface Promotion {
   id: string;
   title: string;
@@ -175,6 +186,7 @@ export interface DB {
   pushSubs: { memberId: string; sub: unknown }[];
   packages?: StudioPackage[];
   promotions?: Promotion[];
+  waitlist?: WaitlistEntry[];
   loginCodes?: LoginCode[];
   settings: { leaderboardsEnabled: boolean; studioCode: string; lastSync?: string };
 }

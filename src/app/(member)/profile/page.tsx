@@ -6,6 +6,7 @@ import QRDisplay from "@/components/QRDisplay";
 import { memberLogout } from "@/app/actions";
 import PushOptIn from "@/components/PushOptIn";
 import ShareButton from "@/components/ShareButton";
+import { getT } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function ProfilePage() {
   const records = personalRecords(member.id);
   const active = membershipActive(member);
   const pass = passUsage(member.id);
+  const t = getT();
 
   const badges = db.earnedBadges
     .filter((b) => b.memberId === member.id)
@@ -72,7 +74,7 @@ export default async function ProfilePage() {
 
       <section className="mt-5 grid grid-cols-2 gap-3">
         {stat("Total classes", stats.total)}
-        {stat("Hours on the reformer", stats.hours)}
+        {stat(t("profile.hours"), stats.hours)}
         {stat("Current streak", `${stats.streak}d`)}
         {stat("This month", stats.thisMonth)}
         {stat("Favourite coach", stats.favInstructor)}

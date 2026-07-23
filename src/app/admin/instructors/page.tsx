@@ -1,4 +1,5 @@
 import { getDB, ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 import { saveInstructor, removeInstructorPhoto } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -6,13 +7,14 @@ export const dynamic = "force-dynamic";
 export default async function InstructorsPage({ searchParams }: { searchParams: { edit?: string; saved?: string } }) {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   const editing = searchParams.edit ? db.instructors.find((i) => i.id === searchParams.edit) : undefined;
 
   const classCount = (id: string) => db.classes.filter((c) => c.instructorId === id).length;
 
   return (
     <div className="max-w-4xl">
-      <h1 className="font-display text-[32px]">Instructors</h1>
+      <h1 className="font-display text-[32px]">{t("adm.instructors")}</h1>
       <p className="mt-1 text-[13px] text-smoke">
         Photos and bios appear on the booking screen. Give a coach an email and PIN and they can sign in at
         <span className="font-medium text-ink"> /staff/login</span> to run front-desk check-ins.
@@ -20,7 +22,7 @@ export default async function InstructorsPage({ searchParams }: { searchParams: 
 
       {searchParams.saved && (
         <div className="mt-4 rounded-xl border border-spring-green/40 bg-spring-green/10 px-4 py-3 text-[13px]">
-          Instructor saved.
+          {t("adm.saved")}
         </div>
       )}
 
