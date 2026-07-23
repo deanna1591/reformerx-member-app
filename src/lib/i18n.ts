@@ -216,6 +216,14 @@ const dict = {
     "settings.rewards": "Rewards",
     "settings.rewardsHint": "Earned and collected",
 
+    "install.title": "Add ReformerX to your home screen",
+    "install.body": "Faster to open, works offline, and you get reminders when a spot opens up.",
+    "install.install": "Add to home screen",
+    "install.later": "Not now",
+    "install.iosTitle": "Add ReformerX to your home screen",
+    "install.iosStep1": "Tap the Share button",
+    "install.iosStep2": "Choose “Add to Home Screen”",
+
     /* notifications */
     "notif.challengeComplete": "🎉 {challenge} complete! Your reward — {reward} — is being prepared. We'll let you know when it's ready at reception.",
     "notif.badge": "New badge earned: {badge}",
@@ -598,6 +606,14 @@ const dict = {
     "settings.challengesHint": "Aktivní výzvy studia",
     "settings.rewards": "Odměny",
     "settings.rewardsHint": "Získané a vyzvednuté",
+
+    "install.title": "Přidej ReformerX na plochu",
+    "install.body": "Rychlejší spuštění, funguje i offline a dostaneš upozornění, když se uvolní místo.",
+    "install.install": "Přidat na plochu",
+    "install.later": "Teď ne",
+    "install.iosTitle": "Přidej ReformerX na plochu",
+    "install.iosStep1": "Klepni na tlačítko Sdílet",
+    "install.iosStep2": "Vyber „Přidat na plochu“",
 
     /* notifications */
     "notif.challengeComplete": "🎉 Výzva {challenge} splněna! Tvoje odměna — {reward} — se připravuje. Dáme ti vědět, až bude na recepci.",
