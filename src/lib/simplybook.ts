@@ -532,10 +532,19 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       db.classes.push(cls);
     }
 
-    // upsert booking
-    if (!db.bookings.some((x) => x.id === bookingId)) {
-      db.bookings.push({ id: bookingId, memberId: member.id, classId: cls.id, source: "simplybook" });
+    // upsert booking — keep the SimplyBook id so cancellations can reach it
+    const existingBooking = db.bookings.find((x) => x.id === bookingId);
+    if (!existingBooking) {
+      db.bookings.push({
+        id: bookingId,
+        memberId: member.id,
+        classId: cls.id,
+        source: "simplybook",
+        simplybookBookingId: String(b.id),
+      });
       bookingRows++;
+    } else if (!existingBooking.simplybookBookingId) {
+      existingBooking.simplybookBookingId = String(b.id); // backfill older rows
     }
   }
 

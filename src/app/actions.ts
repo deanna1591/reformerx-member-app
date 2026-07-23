@@ -435,17 +435,32 @@ export async function cancelReservation(formData: FormData) {
   const booking = db.bookings.find((b) => b.memberId === member.id && b.classId === classId);
   if (!booking) return;
 
-  if (booking.simplybookBookingId) {
-    const { cancelSimplybookBooking } = await import("@/lib/simplybook");
-    const res = await cancelSimplybookBooking(booking.simplybookBookingId);
-    if (!res.ok) {
-      notifyKey(member.id, "notif.cancelFailed", { reason: res.message });
+  // Bookings imported from SimplyBook carry their id in the field, and older
+  // rows encode it in the app id (b-sb-1234) — use either.
+  const cls = db.classes.find((c) => c.id === classId);
+  const sbBookingId =
+    booking.simplybookBookingId ?? (booking.id.startsWith("b-sb-") ? booking.id.slice(5) : undefined);
+
+  if (sbBookingId) {
+    const { cancelSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
+    if (inAppBookingEnabled()) {
+      const res = await cancelSimplybookBooking(sbBookingId);
+      if (!res.ok) {
+        // Never remove it locally if SimplyBook still holds the booking — the
+        // member would think they had cancelled when they hadn't.
+        notifyKey(member.id, "notif.cancelFailed", { reason: res.message });
+        saveDB();
+        revalidatePath(`/class/${classId}`);
+        return;
+      }
+    } else {
+      notifyKey(member.id, "notif.cancelExternally", { title: cls?.title ?? "class" });
       saveDB();
+      revalidatePath(`/class/${classId}`);
       return;
     }
   }
   db.bookings = db.bookings.filter((b) => b !== booking);
-  const cls = db.classes.find((c) => c.id === classId);
   if (cls && typeof cls.spotsLeft === "number") cls.spotsLeft += 1;
   notifyKey(member.id, "notif.cancelled", { title: cls?.title ?? "class" });
   saveDB();
@@ -505,7 +520,9 @@ export async function rescheduleClass(formData: FormData) {
       saveDB();
       return;
     }
-    if (booking.simplybookBookingId) await cancelSimplybookBooking(booking.simplybookBookingId);
+    const oldSbId =
+      booking.simplybookBookingId ?? (booking.id.startsWith("b-sb-") ? booking.id.slice(5) : undefined);
+    if (oldSbId) await cancelSimplybookBooking(oldSbId);
     booking.simplybookBookingId = created.id;
   }
 
