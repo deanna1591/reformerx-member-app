@@ -24,6 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     items.push(
       ["/admin/promotions", t("adm.nav.whatsOn")],
       ["/admin/instructors", t("adm.nav.instructors")],
+      ["/admin/health", t("adm.h.title")],
       ["/admin/settings", t("adm.nav.settings")]
     );
   }

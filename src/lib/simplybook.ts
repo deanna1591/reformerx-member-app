@@ -403,6 +403,15 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     }
   }
 
+  /* Provider capacity, fetched once and reused by both booking import and timetable */
+  const providerCapacity = new Map<string, number>();
+  try {
+    const prs = await sbAll<{ id: number; qty?: number }>("/admin/providers", 5);
+    for (const pr of prs) if (typeof pr.qty === "number" && pr.qty > 0) providerCapacity.set(String(pr.id), pr.qty);
+  } catch {
+    /* capacity stays unknown — classes simply never show as full */
+  }
+
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
   const bookingDays = Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
   const from = new Date(Date.now() - bookingDays * 86400000).toISOString().slice(0, 10);
@@ -502,6 +511,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       if (instructor && provUnitId && !instructor.simplybookUnitId) instructor.simplybookUnitId = provUnitId;
 
       const rawEnd = b.end_datetime ?? b.end_date_time ?? b.end_date;
+      const provQty = provUnitId ? providerCapacity.get(provUnitId) : undefined;
       const durationMin = b.duration
         ? Math.max(20, Number(b.duration))
         : b.event_duration
@@ -517,6 +527,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
         instructorId: instructor?.id ?? db.instructors[0].id,
         startsAt,
         durationMin,
+        capacity: provQty,
       };
       db.classes.push(cls);
     }
@@ -619,11 +630,18 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
           capacityOf.set(String(svc.id), svc.limit_booking);
         }
       }
-      let providers: Array<{ id: number; name: string }> = [];
+      let providers: Array<{ id: number; name: string; qty?: number }> = [];
       try {
-        providers = await sbAll<{ id: number; name: string }>("/admin/providers", 5);
+        providers = await sbAll<{ id: number; name: string; qty?: number }>("/admin/providers", 5);
       } catch {
         /* names fall back to what bookings taught us */
+      }
+      // Capacity lives on the provider: qty = how many clients can be served at
+      // once (the studio's reformers / mats / bikes). The service-level
+      // limit_booking is a fallback when a provider has no qty set.
+      const providerQty = new Map<string, number>();
+      for (const pr of providers) {
+        if (typeof pr.qty === "number" && pr.qty > 0) providerQty.set(String(pr.id), pr.qty);
       }
 
       const horizonDays = Math.max(1, Number(process.env.SIMPLYBOOK_TIMETABLE_DAYS ?? 21) || 21);
@@ -680,8 +698,9 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
               }
 
               const existingClass = db.classes.find((c) => c.id === classId);
+              const cap = (pid ? providerQty.get(String(pid)) : undefined) ?? capacityOf.get(String(svc.id));
               if (existingClass) {
-                existingClass.capacity = capacityOf.get(String(svc.id)) ?? existingClass.capacity;
+                existingClass.capacity = cap ?? existingClass.capacity;
                 existingClass.serviceId = String(svc.id);
                 if (pid) existingClass.unitId = String(pid);
                 if (instructorId) existingClass.instructorId = instructorId;
@@ -694,7 +713,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
                   durationMin: svc.duration && svc.duration > 0 ? svc.duration : 50,
                   serviceId: String(svc.id),
                   unitId: pid ? String(pid) : undefined,
-                  capacity: capacityOf.get(String(svc.id)),
+                  capacity: cap,
                 });
                 timetableSlots++;
               }

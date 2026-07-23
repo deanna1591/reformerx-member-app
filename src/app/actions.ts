@@ -843,3 +843,22 @@ export async function setAdminLanguage(formData: FormData) {
   revalidatePath("/admin", "layout");
   redirect("/admin");
 }
+
+export async function cleanDemoData() {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const ids = new Set(["m-you", "m-jana", "m-tomas", "m-eliska"]);
+  db.members = db.members.filter((m) => !ids.has(m.id));
+  db.bookings = db.bookings.filter((b) => !ids.has(b.memberId));
+  db.checkIns = db.checkIns.filter((c) => !ids.has(c.memberId));
+  db.challengeProgress = db.challengeProgress.filter((p) => !ids.has(p.memberId));
+  db.earnedBadges = db.earnedBadges.filter((b) => !ids.has(b.memberId));
+  db.earnedRewards = db.earnedRewards.filter((r) => !ids.has(r.memberId));
+  db.notifications = db.notifications.filter((n) => !ids.has(n.memberId));
+  db.waitlist = (db.waitlist ?? []).filter((w) => !ids.has(w.memberId));
+  db.classes = db.classes.filter((c) => !c.id.startsWith("c-demo-"));
+  saveDB();
+  revalidatePath("/admin/health");
+  revalidatePath("/admin/members");
+}
