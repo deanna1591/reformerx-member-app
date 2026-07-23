@@ -1,0 +1,38 @@
+name: Sync with SimplyBook
+
+# Vercel's Hobby plan only allows one cron run a day, so scheduling lives here.
+# GitHub Actions is free for public and private repos alike.
+on:
+  schedule:
+    # Every 15 minutes: bookings, timetable and remaining places
+    - cron: "*/15 * * * *"
+    # Nightly at 03:00 UTC: full refresh including members, passes and renewal reminders
+    - cron: "0 3 * * *"
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Choose the mode
+        id: mode
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=quick" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger the sync
+        run: |
+          code=$(curl -s -o /tmp/out.json -w "%{http_code}" \
+            --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/sync?mode=${{ steps.mode.outputs.mode }}")
+          echo "HTTP $code"
+          cat /tmp/out.json
+          echo
+          if [ "$code" != "200" ]; then
+            echo "Sync failed"
+            exit 1
+          fi

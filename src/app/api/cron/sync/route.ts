@@ -21,11 +21,14 @@ export async function GET(req: NextRequest) {
 
   await ensureDB();
   const before = getDB().members.length;
+  // ?mode=full for the nightly run (members, passes, instructors);
+  // default is the quick run — bookings, timetable and places only.
+  const quick = new URL(req.url).searchParams.get("mode") !== "full";
   try {
-    const result = await syncFromSimplybook();
+    const result = await syncFromSimplybook({ quick });
     // Nudge anyone whose pass runs out shortly (once per pass)
     const { sendRenewalReminders, memberLocale } = await import("@/lib/engine");
-    const reminders = sendRenewalReminders();
+    const reminders = quick ? { sent: 0, names: [] } : sendRenewalReminders();
     if (reminders.sent > 0) {
       const { sendPush } = await import("@/lib/push");
       const { translate } = await import("@/lib/i18n");
@@ -39,6 +42,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: result.ok,
       message: result.message,
+      mode: quick ? "quick" : "full",
       newMembers: db.members.length - before,
       renewalReminders: reminders.sent,
     });

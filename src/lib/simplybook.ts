@@ -317,7 +317,12 @@ export interface SyncResult {
  * bookings (yesterday → +14 days) → classes + bookings.
  * Safe to run repeatedly (idempotent upserts keyed on SimplyBook ids).
  */
-export async function syncFromSimplybook(): Promise<SyncResult> {
+/** `quick` skips the slow parts (988-client list, invoice scan, provider fetch)
+ *  and refreshes only what changes minute to minute: bookings, the timetable and
+ *  remaining places. Designed to finish well inside a serverless timeout so it
+ *  can run every few minutes. Run the full sync nightly for passes and members. */
+export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promise<SyncResult> {
+  const quick = opts.quick === true;
   if (!simplybookConfigured()) {
     return {
       ok: false,
@@ -328,8 +333,9 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
 
   const db = getDB();
 
-  /* 1 — clients → members */
-  const clients = await sbAll<SbClient>("/admin/clients");
+  /* 1 — clients → members (skipped on a quick run; new clients arrive with the
+     nightly sync or the webhook) */
+  const clients = quick ? [] : await sbAll<SbClient>("/admin/clients");
   let newMembers = 0;
   for (const c of clients) {
     if (!c.email) continue;
@@ -363,6 +369,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   /* 2.5 — providers → instructors (canonical names, bios and photos) */
   let instructorRows = 0;
   try {
+    if (quick) throw new Error("skipped on quick sync");
     const providers = await sbAll<{
       id: number; name: string; description?: string; picture?: string; picture_path?: string;
       picture_preview?: string; is_active?: boolean; email?: string;
@@ -413,7 +420,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   }
 
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
-  const bookingDays = Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
+  const bookingDays = quick ? 7 : Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
   const from = new Date(Date.now() - bookingDays * 86400000).toISOString().slice(0, 10);
   const to = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   let bookings: SbBooking[] = [];
@@ -570,7 +577,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   };
 
   let membershipEndpointOk = false;
-  for (const path of ["/admin/clients/memberships?filter[active_only]=1", "/admin/clients/memberships"]) {
+  for (const path of quick ? [] : ["/admin/clients/memberships?filter[active_only]=1", "/admin/clients/memberships"]) {
     try {
       const rows = await sbAll<SbClientMembership>(path, 20);
       membershipEndpointOk = true; // endpoint answered — feature exists but may be unused
@@ -762,7 +769,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   // Best (latest-ending) real pass per member. Applied after the scan so it
   // overrides any activity-derived estimate, even when it ends sooner.
   const bestPass = new Map<string, { end: Date; start?: string; name?: string; credits?: number }>();
-  if (membershipRows === 0) {
+  if (!quick && membershipRows === 0) {
     try {
       const backfill = process.env.SIMPLYBOOK_SCAN_INVOICES === "1";
       const invDays = backfill ? 400 : 120;
@@ -911,7 +918,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
 
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
-  db.settings.lastSync = `${new Date().toISOString()}|ok|${message}`;
+  db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
   saveDB();
   return {
     ok: true,
