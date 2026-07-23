@@ -896,3 +896,20 @@ export async function cleanDemoData() {
   revalidatePath("/admin/health");
   revalidatePath("/admin/members");
 }
+
+export async function sendRenewalRemindersNow() {
+  await ensureDB();
+  requireOwner();
+  const { sendRenewalReminders, memberLocale } = await import("@/lib/engine");
+  const result = sendRenewalReminders();
+  if (result.sent > 0) {
+    const { sendPush } = await import("@/lib/push");
+    const { translate } = await import("@/lib/i18n");
+    const db = getDB();
+    for (const n of db.notifications.slice(0, result.sent)) {
+      void sendPush(n.memberId, translate(memberLocale(n.memberId), (n.key ?? "notif.renewal") as never, n.params));
+    }
+  }
+  revalidatePath("/admin/passes");
+  redirect(`/admin/passes?sent=${result.sent}`);
+}

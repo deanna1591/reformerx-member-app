@@ -23,6 +23,16 @@ export async function GET(req: NextRequest) {
   const before = getDB().members.length;
   try {
     const result = await syncFromSimplybook();
+    // Nudge anyone whose pass runs out shortly (once per pass)
+    const { sendRenewalReminders, memberLocale } = await import("@/lib/engine");
+    const reminders = sendRenewalReminders();
+    if (reminders.sent > 0) {
+      const { sendPush } = await import("@/lib/push");
+      const { translate } = await import("@/lib/i18n");
+      for (const n of getDB().notifications.slice(0, reminders.sent)) {
+        void sendPush(n.memberId, translate(memberLocale(n.memberId), (n.key ?? "notif.renewal") as never, n.params));
+      }
+    }
     const db = getDB();
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
     saveDB();
@@ -30,6 +40,7 @@ export async function GET(req: NextRequest) {
       ok: result.ok,
       message: result.message,
       newMembers: db.members.length - before,
+      renewalReminders: reminders.sent,
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "sync failed" }, { status: 500 });

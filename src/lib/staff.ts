@@ -36,4 +36,4 @@ export function isStaff(): boolean {
 }
 
 /** Pages instructors shouldn't reach (settings, challenge design, staff admin). */
-export const OWNER_ONLY = ["/admin/settings", "/admin/challenges", "/admin/instructors", "/admin/promotions", "/admin/health"];
+export const OWNER_ONLY = ["/admin/settings", "/admin/challenges", "/admin/instructors", "/admin/promotions", "/admin/health", "/admin/passes"];

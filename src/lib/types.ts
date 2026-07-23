@@ -20,7 +20,9 @@ export interface Member {
   locale?: "en" | "cs";
   passName?: string; // exact product name, e.g. "Monthly Unlimited"
   passStart?: string; // ISO — start of the current pass period
-  passCredits?: number; // class credits when the pass is a bundle (e.g. 10)
+  passCredits?: number;
+  /** The membershipExpires value we last sent a renewal reminder for. */
+  renewalRemindedFor?: string; // class credits when the pass is a bundle (e.g. 10)
   referredBy?: string; // memberId of who referred them
   isAdmin?: boolean;
 }

@@ -662,3 +662,86 @@ export function offerNextSpot(classId: string): boolean {
   saveDB();
   return true;
 }
+
+/* --------------------------- pass overview --------------------------- */
+
+export interface PassGroup {
+  name: string;
+  count: number;
+  members: Array<{
+    id: string;
+    name: string;
+    email: string;
+    expires: string;
+    daysLeft: number;
+    used: number;
+    credits: number | null;
+    reminded: boolean;
+  }>;
+}
+
+/** Active passes grouped by product, most popular first. */
+export function passOverview(): { groups: PassGroup[]; totalActive: number; expiringSoon: number } {
+  const db = getDB();
+  const now = Date.now();
+  const byName = new Map<string, PassGroup>();
+  let expiringSoon = 0;
+
+  for (const m of db.members) {
+    if (!membershipActive(m)) continue;
+    const name = m.passName ?? (m.membershipType === "Member" ? "Studio member (no pass on file)" : m.membershipType);
+    const usage = passUsage(m.id);
+    const daysLeft = Math.max(0, Math.ceil((new Date(m.membershipExpires).getTime() - now) / 86400000));
+    if (daysLeft <= RENEWAL_WINDOW_DAYS) expiringSoon++;
+
+    const group = byName.get(name) ?? { name, count: 0, members: [] };
+    group.count++;
+    group.members.push({
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      expires: m.membershipExpires,
+      daysLeft,
+      used: usage?.used ?? 0,
+      credits: usage?.credits ?? null,
+      reminded: m.renewalRemindedFor === m.membershipExpires,
+    });
+    byName.set(name, group);
+  }
+
+  const groups = Array.from(byName.values()).sort((a, b) => b.count - a.count);
+  for (const g of groups) g.members.sort((a, b) => a.daysLeft - b.daysLeft);
+  return { groups, totalActive: groups.reduce((n, g) => n + g.count, 0), expiringSoon };
+}
+
+export const RENEWAL_WINDOW_DAYS = Math.max(1, Number(process.env.RENEWAL_REMINDER_DAYS ?? 3) || 3);
+
+/** Nudge members whose pass runs out within the window. One reminder per pass —
+ *  re-buying resets it, so a renewing member is never nudged twice. */
+export function sendRenewalReminders(): { sent: number; names: string[] } {
+  const db = getDB();
+  const now = Date.now();
+  const names: string[] = [];
+
+  for (const m of db.members) {
+    if (!membershipActive(m)) continue;
+    if (m.renewalRemindedFor === m.membershipExpires) continue; // already nudged for this pass
+    const daysLeft = Math.ceil((new Date(m.membershipExpires).getTime() - now) / 86400000);
+    if (daysLeft < 0 || daysLeft > RENEWAL_WINDOW_DAYS) continue;
+
+    const stats = memberStats(m.id);
+    const streak = currentStreak(m.id);
+    // Lead with what they'd lose, not with the sale
+    const key = streak >= 2 ? "notif.renewalStreak" : stats.total >= 5 ? "notif.renewalRegular" : "notif.renewal";
+    notifyKey(m.id, key as TranslationKey, {
+      days: daysLeft <= 0 ? 1 : daysLeft,
+      streak,
+      total: stats.total,
+      pass: m.passName ?? m.membershipType,
+    });
+    m.renewalRemindedFor = m.membershipExpires;
+    names.push(m.name);
+  }
+  if (names.length) saveDB();
+  return { sent: names.length, names };
+}
