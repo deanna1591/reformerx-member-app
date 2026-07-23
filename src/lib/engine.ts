@@ -381,9 +381,33 @@ export function passUsage(memberId: string) {
   const totalDays = start ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000)) : null;
   const daysUsed = totalDays ? Math.max(0, Math.min(totalDays, totalDays - daysLeft)) : null;
 
+  // Per-service allowance, the way SimplyBook shows it: "Strong Pilates
+  // Reformer 11 of 30". The limit comes from the package definition; the count
+  // is the member's own confirmed classes for that service inside the period.
+  const pkg = m.passPackageId
+    ? (db.packages ?? []).find((p) => p.packageId === m.passPackageId)
+    : undefined;
+  const perService = (pkg?.services ?? [])
+    .map((allowance) => {
+      const usedForService = attendedClasses(memberId).filter((a) => {
+        const t = new Date(a.at).getTime();
+        if (t < from || t > end.getTime()) return false;
+        const c = db.classes.find((x) => x.id === a.classId);
+        return Boolean(c && c.serviceId === allowance.serviceId);
+      }).length;
+      return {
+        name: allowance.name,
+        used: usedForService,
+        limit: allowance.qty,
+        left: Math.max(0, allowance.qty - usedForService),
+      };
+    })
+    .filter((x) => x.limit > 0);
+
   return {
     active,
     name,
+    perService,
     start: start?.toISOString() ?? null,
     end: m.membershipExpires,
     unlimited,

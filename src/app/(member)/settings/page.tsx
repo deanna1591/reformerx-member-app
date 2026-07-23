@@ -57,6 +57,8 @@ export default async function SettingsPage() {
           {row(t("settings.pass"), active ? pass?.name ?? member.membershipType : t("pass.none"))}
           {row(t("settings.validUntil"), active ? fmtDate(member.membershipExpires) : "—")}
           {active && pass && row(t("settings.usage"), pass.summary)}
+          {active &&
+            pass?.perService.map((s) => row(s.name, `${s.used} / ${s.limit}`))}
           {link("/store", t("settings.buyRenew"), t("settings.opensShop"))}
         </section>
 

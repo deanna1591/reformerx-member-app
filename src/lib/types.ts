@@ -21,6 +21,7 @@ export interface Member {
   passName?: string; // exact product name, e.g. "Monthly Unlimited"
   passStart?: string; // ISO — start of the current pass period
   passCredits?: number;
+  passPackageId?: string; // which SimplyBook package this pass came from
   /** The membershipExpires value we last sent a renewal reminder for. */
   renewalRemindedFor?: string; // class credits when the pass is a bundle (e.g. 10)
   referredBy?: string; // memberId of who referred them
@@ -80,8 +81,16 @@ export interface Promotion {
   createdAt: string;
 }
 
+export interface PackageServiceAllowance {
+  serviceId: string;
+  name: string;
+  qty: number;
+}
+
 export interface StudioPackage {
   id: string;
+  packageId?: string; // SimplyBook package id
+  services?: PackageServiceAllowance[];
   name: string;
   price: number;
   currency: string;

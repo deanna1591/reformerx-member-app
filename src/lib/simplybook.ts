@@ -764,11 +764,34 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      (package_instances stays empty on this account — don't rely on it.)
      Default window: 60 days per sync (fast, catches new purchases).
      Set SIMPLYBOOK_SCAN_INVOICES=1 once for a 400-day backfill. */
+  // Package definitions carry the per-service allowance ("30 × Strong Pilates
+  // Reformer"), which is what lets us show a member how much of their pass is
+  // left, service by service.
+  const packageDefs = new Map<string, { name: string; services: Array<{ serviceId: string; name: string; qty: number }> }>();
+  if (!quick) {
+    try {
+      const defs = await sbAll<{
+        id: number; name: string;
+        services?: Array<{ service_id?: number; name?: string; qty?: number }>;
+      }>("/admin/packages", 5);
+      for (const d of defs) {
+        packageDefs.set(String(d.id), {
+          name: d.name,
+          services: (d.services ?? [])
+            .filter((x) => typeof x.qty === "number" && x.qty > 0)
+            .map((x) => ({ serviceId: String(x.service_id ?? ""), name: x.name ?? "", qty: Number(x.qty) })),
+        });
+      }
+    } catch {
+      /* allowances are a bonus — the pass still works without them */
+    }
+  }
+
   let packagePasses = 0;
   const catalog = new Map<string, NonNullable<DB["packages"]>[number]>();
   // Best (latest-ending) real pass per member. Applied after the scan so it
   // overrides any activity-derived estimate, even when it ends sooner.
-  const bestPass = new Map<string, { end: Date; start?: string; name?: string; credits?: number }>();
+  const bestPass = new Map<string, { end: Date; start?: string; name?: string; credits?: number; packageId?: string }>();
   if (!quick && membershipRows === 0) {
     try {
       const backfill = process.env.SIMPLYBOOK_SCAN_INVOICES === "1";
@@ -799,6 +822,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
           if (!prev || end.getTime() > prev.end.getTime()) {
             const creditMatch = productName ? /(\d+)\s*(?:x|classes|lekc|vstup)/i.exec(productName) : null;
             bestPass.set(m.id, {
+              packageId: line.package_id != null ? String(line.package_id) : undefined,
               end,
               start: pm
                 ? new Date(`${pm[3]}-${pm[2]}-${pm[1]}T00:00:00`).toISOString()
@@ -821,8 +845,11 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
             const known = catalog.get(pkgId);
             const days = pm ? Math.round((end.getTime() - new Date(`${pm[3]}-${pm[2]}-${pm[1]}T00:00:00`).getTime()) / 86400000) : undefined;
             if (!known || (price > 0 && known.price === 0)) {
+              const defn = line.package_id != null ? packageDefs.get(String(line.package_id)) : undefined;
               catalog.set(pkgId, {
                 id: pkgId,
+                packageId: line.package_id != null ? String(line.package_id) : undefined,
+                services: defn?.services,
                 name: productName,
                 price: price || known?.price || 0,
                 currency: "CZK",
@@ -841,6 +868,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
         m.passName = pass.name;
         m.passStart = pass.start;
         m.passCredits = pass.credits;
+        m.passPackageId = pass.packageId;
       }
       membershipSource = `invoice package lines (${invoices.length} invoices, ${invDays}d window)`;
       if (catalog.size > 0) {

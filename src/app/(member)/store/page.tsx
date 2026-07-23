@@ -43,6 +43,27 @@ export default async function StorePage() {
               : t("store.buyToBook")}
           </p>
           {active && pass && <p className="mt-1 text-[13px] font-medium text-sage">{pass.summary}</p>}
+
+          {active && pass && pass.perService.length > 0 && (
+            <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
+              {pass.perService.map((s) => (
+                <div key={s.name}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="truncate text-[13px] text-white/85">{s.name}</p>
+                    <p className="shrink-0 text-[12px] tabular-nums text-white/60">
+                      {s.used} / {s.limit}
+                    </p>
+                  </div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/15">
+                    <div
+                      className="h-full rounded-full bg-sage"
+                      style={{ width: `${Math.min(100, Math.round((s.used / s.limit) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
