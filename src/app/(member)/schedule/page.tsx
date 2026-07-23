@@ -159,6 +159,10 @@ export default async function SchedulePage({
                 >
                   {t("schedule.full")}
                 </Link>
+              ) : canBook(member.id, c.id).reason === "daily_limit" ? (
+                <span className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-smoke">
+                  {t("schedule.bookedToday")}
+                </span>
               ) : !eligibility.ok ? (
                 <Link href="/store" className="rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white">
                   {eligibility.reason === "no_credits" ? t("schedule.topUp") : t("schedule.getPass")}

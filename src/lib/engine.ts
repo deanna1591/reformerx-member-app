@@ -1,5 +1,5 @@
 import { getDB, saveDB } from "./store";
-import { STUDIO_TZ } from "./time";
+import { STUDIO_TZ, studioDayKey } from "./time";
 import { translate, type Locale, type TranslationKey } from "./i18n";
 import { Challenge, CheckIn, Member } from "./types";
 
@@ -410,9 +410,23 @@ export function passUsage(memberId: string) {
  *  - unlimited / time-based pass   → yes
  *  Credits are counted against the current pass period only, so a new pack
  *  resets the allowance the way SimplyBook does. */
-export function canBook(memberId: string): {
+export const MAX_CLASSES_PER_DAY = Math.max(1, Number(process.env.MAX_CLASSES_PER_DAY ?? 1) || 1);
+
+/** Can this member book a given class?
+ *  - no active pass                     → send them to the shop
+ *  - unlimited pass, already booked that day → one class per day
+ *  - credit pack with none left         → send them to the shop
+ *
+ *  `ignoreClassId` is the booking being moved during a reschedule, so a member
+ *  can swap to a different time on the same day without tripping the daily rule.
+ */
+export function canBook(
+  memberId: string,
+  classId?: string,
+  ignoreClassId?: string
+): {
   ok: boolean;
-  reason: "ok" | "no_pass" | "no_credits";
+  reason: "ok" | "no_pass" | "no_credits" | "daily_limit";
   creditsLeft: number | null;
 } {
   const db = getDB();
@@ -422,14 +436,30 @@ export function canBook(memberId: string): {
   const pass = passUsage(memberId);
   if (!pass) return { ok: false, reason: "no_pass", creditsLeft: null };
 
-  // Unlimited or open-ended passes have no credit ceiling
+  /* Unlimited passes: one class per day. Credit packs aren't limited this way —
+     each class already costs a credit. Day boundaries are studio-local, so an
+     evening class and the next morning count as different days. */
+  if (pass.unlimited && classId) {
+    const target = db.classes.find((c) => c.id === classId);
+    if (target) {
+      const day = studioDayKey(target.startsAt);
+      const sameDay = db.bookings.filter((b) => {
+        if (b.memberId !== memberId) return false;
+        if (b.classId === classId || b.classId === ignoreClassId) return false;
+        const c = db.classes.find((x) => x.id === b.classId);
+        return Boolean(c && studioDayKey(c.startsAt) === day);
+      }).length;
+      if (sameDay >= MAX_CLASSES_PER_DAY) return { ok: false, reason: "daily_limit", creditsLeft: null };
+    }
+  }
+
   if (pass.unlimited || pass.credits == null) return { ok: true, reason: "ok", creditsLeft: null };
 
   // Upcoming bookings already consume credits — otherwise a member could book
   // ten classes on a ten-class pack and attend none of them for free.
   const now = Date.now();
   const upcomingBooked = db.bookings.filter((b) => {
-    if (b.memberId !== memberId) return false;
+    if (b.memberId !== memberId || b.classId === ignoreClassId) return false;
     const c = db.classes.find((x) => x.id === b.classId);
     return Boolean(c && new Date(c.startsAt).getTime() >= now);
   }).length;

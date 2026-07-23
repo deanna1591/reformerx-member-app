@@ -378,11 +378,15 @@ export async function reserveClass(formData: FormData) {
 
   // Credits are checked on the server too — the UI can be out of date
   const { canBook } = await import("@/lib/engine");
-  const eligibility = canBook(member.id);
+  const eligibility = canBook(member.id, classId);
   if (!eligibility.ok) {
     notifyKey(
       member.id,
-      eligibility.reason === "no_credits" ? "notif.noCredits" : "notif.noPass",
+      eligibility.reason === "no_credits"
+        ? "notif.noCredits"
+        : eligibility.reason === "daily_limit"
+        ? "notif.dailyLimit"
+        : "notif.noPass",
       { title: cls.title }
     );
     saveDB();
@@ -477,6 +481,13 @@ export async function rescheduleClass(formData: FormData) {
   const target = db.classes.find((c) => c.id === toId);
   if (!booking || !target) return;
   if (db.bookings.some((b) => b.memberId === member.id && b.classId === toId)) return;
+  const { canBook: canMove } = await import("@/lib/engine");
+  const moveCheck = canMove(member.id, toId, fromId);
+  if (!moveCheck.ok && moveCheck.reason === "daily_limit") {
+    notifyKey(member.id, "notif.dailyLimit", { title: target.title });
+    saveDB();
+    return;
+  }
 
   const { createSimplybookBooking, cancelSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
 
@@ -768,8 +779,9 @@ export async function confirmWaitlistOffer(formData: FormData) {
   }
 
   const { canBook } = await import("@/lib/engine");
-  if (!canBook(member.id).ok) {
-    notifyKey(member.id, "notif.noCredits", { title: cls.title });
+  const claim = canBook(member.id, classId);
+  if (!claim.ok) {
+    notifyKey(member.id, claim.reason === "daily_limit" ? "notif.dailyLimit" : "notif.noCredits", { title: cls.title });
     saveDB();
     revalidatePath(`/class/${classId}`);
     return;

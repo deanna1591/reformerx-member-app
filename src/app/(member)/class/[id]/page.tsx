@@ -35,7 +35,7 @@ export default async function ClassDetail({ params }: { params: { id: string } }
     (!myEntry.offerExpiresAt || new Date(myEntry.offerExpiresAt).getTime() > Date.now());
 
   const t = getT();
-  const eligibility = canBook(member.id);
+  const eligibility = canBook(member.id, cls.id);
   const dateLabel = studioLongDate(start);
   const endsAt = new Date(start.getTime() + cls.durationMin * 60000);
 
@@ -170,6 +170,14 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                   </ConfirmButton>
                 </form>
               </>
+            ) : eligibility.reason === "daily_limit" ? (
+              <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
+                <p className="font-display text-[18px]">{t("class.dailyLimitTitle")}</p>
+                <p className="mt-1 text-[13px] text-smoke">{t("class.dailyLimitBody")}</p>
+                <Link href="/schedule" className="mt-3 inline-block text-[13px] font-semibold text-tan-deep">
+                  {t("home.fullSchedule")} →
+                </Link>
+              </div>
             ) : eligibility.reason === "no_credits" ? (
               <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
                 <p className="font-display text-[18px]">{t("class.noCreditsTitle")}</p>
