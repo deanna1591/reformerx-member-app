@@ -862,7 +862,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      client with a confirmed recent or upcoming booking IS an active member —
      they could not book otherwise. Grant "Member" status: latest booking + 45 days. */
   let activityMembers = 0;
-  {
+  if (!quick) {
     const latestByClient = new Map<string, number>();
     for (const b of bookings) {
       const rawStart = b.start_datetime ?? b.start_date_time ?? b.start_date;
@@ -884,7 +884,10 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
       // A genuine pass (from SimplyBook) is authoritative — never stretch its
       // expiry with a booking-activity estimate, even when the pass ends sooner.
       const pass = bestPass.get(m.id);
-      const hasRealPass = Boolean(pass && pass.end.getTime() > Date.now());
+      const hasRealPass =
+        Boolean(pass && pass.end.getTime() > Date.now()) ||
+        // …or one recorded by an earlier full sync and still valid
+        Boolean(m.passName && new Date(m.membershipExpires).getTime() > Date.now());
       if (new Date(m.joinedAt).getTime() > latest) m.joinedAt = new Date(latest).toISOString();
       if (hasRealPass) continue;
 
