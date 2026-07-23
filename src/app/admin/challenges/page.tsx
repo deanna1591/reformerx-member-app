@@ -1,4 +1,5 @@
 import { getDB, ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 import { createChallenge, toggleChallenge } from "@/app/actions";
 import { fmtDate } from "@/lib/engine";
 
@@ -7,9 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminChallenges() {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   return (
     <div>
-      <h1 className="font-display text-[32px]">Challenges</h1>
+      <h1 className="font-display text-[32px]">{t("adm.c.title")}</h1>
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
         <section className="space-y-3">
           {db.challenges.map((ch) => (

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { DB, StudioClass, Booking, CheckIn } from "./types";
+import { DB, StudioClass, Booking, CheckIn, Member } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "db.json");
@@ -14,6 +14,10 @@ function daysFromNow(n: number, hour = 9, min = 0) {
   d.setHours(hour, min, 0, 0);
   return d;
 }
+
+/** Demo members are for local development only. When SimplyBook credentials are
+ *  present (production), the studio starts with real data and no fake people. */
+const DEMO_DATA = !(process.env.SIMPLYBOOK_COMPANY && process.env.SIMPLYBOOK_USER_KEY);
 
 function seed(): DB {
   const instructors = [
@@ -62,7 +66,7 @@ function seed(): DB {
   };
   classes.push(demoClass);
 
-  const members = [
+  const members = DEMO_DATA ? [
     {
       id: "m-you",
       name: "Petra Nováková",
@@ -104,7 +108,7 @@ function seed(): DB {
       qrCode: "RXM-ELISKA-7733",
       simplybookId: "sb-1004",
     },
-  ];
+  ] : ([] as Member[]);
 
   // Past attendance to make stats & leaderboards feel alive
   const checkIns: CheckIn[] = [];
@@ -136,8 +140,10 @@ function seed(): DB {
       checkIns.push({ id: `ci-x${bid}`, memberId: "m-you", classId: evening.id, at: evening.startsAt });
     }
   }
-  attend("m-jana", 2, 1); // ~15 visits
-  attend("m-tomas", 5, 2); // ~6 visits
+  if (DEMO_DATA) {
+    attend("m-jana", 2, 1); // ~15 visits
+    attend("m-tomas", 5, 2); // ~6 visits
+  }
 
   // Upcoming booking for the demo member: the class starting in 10 min + one tomorrow
   bookings.push({ id: `b-${++bid}`, memberId: "m-you", classId: demoClass.id, source: "wordpress" });

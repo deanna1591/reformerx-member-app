@@ -46,6 +46,7 @@ export interface StudioClass {
   durationMin: number;
   serviceId?: string; // SimplyBook event/service id — needed to book via API
   unitId?: string; // SimplyBook performer id
+  capacity?: number; // max bookings per class (SimplyBook limit_booking)
   spotsLeft?: number;
 }
 

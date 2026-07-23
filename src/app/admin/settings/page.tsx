@@ -1,4 +1,5 @@
 import { getDB, ensureDB } from "@/lib/store";
+import { getT } from "@/lib/i18n";
 import { toggleLeaderboards } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -6,9 +7,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminSettings() {
   await ensureDB();
   const db = getDB();
+  const t = getT();
   return (
     <div>
-      <h1 className="font-display text-[32px]">Settings</h1>
+      <h1 className="font-display text-[32px]">{t("adm.s.title")}</h1>
       <div className="mt-6 max-w-xl space-y-4">
         <div className="flex items-center justify-between rounded-xl2 bg-white p-5 shadow-card">
           <div>

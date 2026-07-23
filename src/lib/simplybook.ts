@@ -390,6 +390,19 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
   }
   const mergedInstructors = mergeDuplicateInstructors(db);
 
+  // Coaches who no longer exist in SimplyBook and haven't taught for 90 days are
+  // hidden from booking filters. Their class history is kept intact.
+  if (instructorRows > 0) {
+    const cutoff = Date.now() - 90 * 86400000;
+    for (const inst of db.instructors) {
+      if (inst.simplybookUnitId || inst.active === false) continue;
+      const taughtRecently = db.classes.some(
+        (c) => c.instructorId === inst.id && new Date(c.startsAt).getTime() > cutoff
+      );
+      if (!taughtRecently) inst.active = false;
+    }
+  }
+
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
   const bookingDays = Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
   const from = new Date(Date.now() - bookingDays * 86400000).toISOString().slice(0, 10);
@@ -598,7 +611,14 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     try {
       const services = await sbAll<{
         id: number; name: string; duration?: number; providers?: number[]; is_active?: boolean; is_visible?: boolean;
+        limit_booking?: number | null; min_group_booking?: number | null;
       }>("/admin/services", 5);
+      const capacityOf = new Map<string, number>();
+      for (const svc of services) {
+        if (typeof svc.limit_booking === "number" && svc.limit_booking > 0) {
+          capacityOf.set(String(svc.id), svc.limit_booking);
+        }
+      }
       let providers: Array<{ id: number; name: string }> = [];
       try {
         providers = await sbAll<{ id: number; name: string }>("/admin/providers", 5);
@@ -661,7 +681,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
 
               const existingClass = db.classes.find((c) => c.id === classId);
               if (existingClass) {
-                existingClass.spotsLeft = slot.available_count ?? existingClass.spotsLeft;
+                existingClass.capacity = capacityOf.get(String(svc.id)) ?? existingClass.capacity;
                 existingClass.serviceId = String(svc.id);
                 if (pid) existingClass.unitId = String(pid);
                 if (instructorId) existingClass.instructorId = instructorId;
@@ -674,7 +694,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
                   durationMin: svc.duration && svc.duration > 0 ? svc.duration : 50,
                   serviceId: String(svc.id),
                   unitId: pid ? String(pid) : undefined,
-                  spotsLeft: slot.available_count,
+                  capacity: capacityOf.get(String(svc.id)),
                 });
                 timetableSlots++;
               }
@@ -721,7 +741,7 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       const invFrom = new Date(Date.now() - invDays * 86400000).toISOString().slice(0, 10);
       const invoices = await sbAll<SbInvoice>(
         `/admin/invoices?filter[datetime_from]=${invFrom}`,
-        backfill ? 60 : 16
+        backfill ? 200 : 16
       );
       const period = /\((\d{2})-(\d{2})-(\d{4})\s*-\s*(\d{2})-(\d{2})-(\d{4})\)/;
       const namePrefix = /^[^:]{0,30}:\s*(.+?)\s*\(/;
@@ -756,8 +776,11 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
           }
           packagePasses++;
 
-          // Catalogue the product so the in-app store can show real passes
-          if (productName) {
+          // Catalogue the product so the in-app store can show real passes.
+          // Studios sell merchandise through Packages too (grip socks, bottles) —
+          // those are not passes and shouldn't sit next to memberships.
+          const MERCH = /(ponožk|ponozk|sock|láhev|lahev|bottle|tričk|tricko|shirt|merch|taška|bag|ručník|rucnik|towel)/i;
+          if (productName && !MERCH.test(productName)) {
             const price = typeof line.price === "number" ? line.price : Number(line.price ?? 0);
             const pkgId = `pkg-${line.package_id ?? productName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
             const known = catalog.get(pkgId);
@@ -786,7 +809,11 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
       }
       membershipSource = `invoice package lines (${invoices.length} invoices, ${invDays}d window)`;
       if (catalog.size > 0) {
-        const merged = new Map((db.packages ?? []).map((p) => [p.id, p]));
+        // Drop merchandise catalogued by earlier syncs, not just new entries
+        const MERCH_CLEAN = /(ponožk|ponozk|sock|láhev|lahev|bottle|tričk|tricko|shirt|merch|taška|bag|ručník|rucnik|towel)/i;
+        const merged = new Map(
+          (db.packages ?? []).filter((p) => !MERCH_CLEAN.test(p.name)).map((p) => [p.id, p])
+        );
         for (const [k, v] of Array.from(catalog.entries())) merged.set(k, v);
         db.packages = Array.from(merged.values()).sort((a, b) => a.price - b.price);
       }
@@ -836,11 +863,29 @@ export async function syncFromSimplybook(): Promise<SyncResult> {
     }
   }
 
+  /* 5 — Spots remaining. SimplyBook's slot feed returns available_count: null on
+     this account, so capacity comes from the service's booking limit and the
+     count of confirmed bookings we already hold. Classes without a configured
+     limit stay open-ended (never "full"). */
+  let fullClasses = 0;
+  {
+    const bookedPerClass = new Map<string, number>();
+    for (const b of db.bookings) bookedPerClass.set(b.classId, (bookedPerClass.get(b.classId) ?? 0) + 1);
+    for (const c of db.classes) {
+      if (typeof c.capacity !== "number" || c.capacity <= 0) {
+        c.spotsLeft = undefined; // unknown capacity → never shown as full
+        continue;
+      }
+      c.spotsLeft = Math.max(0, c.capacity - (bookedPerClass.get(c.id) ?? 0));
+      if (c.spotsLeft === 0 && new Date(c.startsAt).getTime() > Date.now()) fullClasses++;
+    }
+  }
+
   saveDB();
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   return {
     ok: true,
-    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
+    message: `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${fullClasses ? `, ${fullClasses} full` : ""}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`,
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,
