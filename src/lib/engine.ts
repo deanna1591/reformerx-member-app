@@ -769,3 +769,55 @@ export function sendRenewalReminders(): { sent: number; names: string[] } {
   if (names.length) saveDB();
   return { sent: names.length, names };
 }
+
+/* ----------------------- pre-class reminders ----------------------- */
+
+/** How close to the class the reminder aims for, and how wide a window the
+ *  scheduler is allowed to catch it in (the sync runs every 15 minutes). */
+export const REMINDER_TARGET_MIN = Number(process.env.CLASS_REMINDER_MINUTES ?? 30) || 30;
+const REMINDER_WINDOW_MIN = 20; // fires between target and target+20 minutes out
+
+/** Members with a class starting shortly who haven't been reminded yet.
+ *  Returns what to send so the caller can push and notify in one pass. */
+export function dueClassReminders(): Array<{
+  memberId: string;
+  bookingId: string;
+  params: { title: string; time: string; coach: string };
+}> {
+  const db = getDB();
+  const now = Date.now();
+  const from = now + REMINDER_TARGET_MIN * 60000;
+  const to = from + REMINDER_WINDOW_MIN * 60000;
+  const out: Array<{ memberId: string; bookingId: string; params: { title: string; time: string; coach: string } }> = [];
+
+  for (const b of db.bookings) {
+    if (b.reminderSentAt) continue;
+    const cls = db.classes.find((c) => c.id === b.classId);
+    if (!cls) continue;
+    const startsAt = new Date(cls.startsAt).getTime();
+    if (startsAt < from || startsAt > to) continue;
+    // Already scanned in? No need to nudge them.
+    if (db.checkIns.some((ci) => ci.memberId === b.memberId && ci.classId === b.classId)) continue;
+
+    out.push({
+      memberId: b.memberId,
+      bookingId: b.id,
+      params: {
+        title: cls.title,
+        time: fmtTime(cls.startsAt),
+        coach: db.instructors.find((i) => i.id === cls.instructorId)?.name ?? "ReformerX",
+      },
+    });
+  }
+  return out;
+}
+
+/** Record the in-app notification and mark the booking so it can't repeat. */
+export function markReminderSent(bookingId: string, memberId: string, params: { title: string; time: string; coach: string }) {
+  const db = getDB();
+  const booking = db.bookings.find((b) => b.id === bookingId);
+  if (!booking || booking.reminderSentAt) return false;
+  booking.reminderSentAt = new Date().toISOString();
+  notifyKey(memberId, "notif.classSoon", params);
+  return true;
+}

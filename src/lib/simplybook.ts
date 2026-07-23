@@ -13,7 +13,22 @@
  *   SIMPLYBOOK_API_BASE   default "https://user-api-v2.simplybook.it"
  */
 import { getDB, saveDB } from "./store";
-import { studioToISO, isoToStudioString, studioDayKey } from "./time";
+import { studioToISO, isoToStudioString, studioDayKey, STUDIO_TZ } from "./time";
+const STUDIO_TZ_FOR_SYNC = STUDIO_TZ;
+
+/** Local wrapper so the sync can post member notifications without a cycle. */
+function notifyKeyFromSync(memberId: string, key: string, params: Record<string, string | number>) {
+  const db = getDB();
+  db.notifications.unshift({
+    id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    memberId,
+    text: "",
+    key,
+    params,
+    at: new Date().toISOString(),
+    read: false,
+  });
+}
 import type { Member, MembershipType , DB } from "./types";
 
 const BASE = process.env.SIMPLYBOOK_API_BASE || "https://user-api-v2.simplybook.it";
@@ -469,6 +484,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     }
   }
   let bookingRows = 0;
+  const studioCancellations: Array<{ memberId: string; title: string; when: string }> = [];
   for (const b of bookings) {
     const rawStart = b.start_datetime ?? b.start_date_time ?? b.start_date;
     if (!rawStart) continue;
@@ -490,7 +506,26 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     const bookingId = `b-sb-${b.id}`;
 
     if (canceled) {
-      db.bookings = db.bookings.filter((x) => x.id !== bookingId);
+      const held = db.bookings.find((x) => x.id === bookingId);
+      if (held) {
+        const cls = db.classes.find((c) => c.id === held.classId);
+        const upcoming = cls && new Date(cls.startsAt).getTime() > Date.now();
+        if (cls && upcoming) {
+          studioCancellations.push({
+            memberId: held.memberId,
+            title: cls.title,
+            when: new Date(cls.startsAt).toLocaleString("en-GB", {
+              timeZone: STUDIO_TZ_FOR_SYNC,
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          });
+        }
+        db.bookings = db.bookings.filter((x) => x.id !== bookingId);
+      }
       continue;
     }
     if (!member) continue;
@@ -553,6 +588,12 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     } else if (!existingBooking.simplybookBookingId) {
       existingBooking.simplybookBookingId = String(b.id); // backfill older rows
     }
+  }
+
+  /* Tell members whose class the studio cancelled — their booking is gone and
+     they would otherwise only find out by noticing it missing. */
+  for (const c of studioCancellations) {
+    notifyKeyFromSync(c.memberId, "notif.classCancelledByStudio", { title: c.title, when: c.when });
   }
 
   /* 2 — memberships → type + expiry (source of truth for "active").

@@ -220,13 +220,14 @@ export async function setRewardStatus(rewardId: string, status: "ready" | "colle
   er.decidedAt = new Date().toISOString();
   const label = `${er.rewardEmoji} ${er.reward}`;
   if (status === "ready") {
-    notify(er.memberId, `🎁 Your reward is ready: ${label}. Pick it up at reception on your next visit.`);
+    notifyKey(er.memberId, "notif.rewardReady", { reward: label });
     const { sendPush } = await import("@/lib/push");
-    void sendPush(er.memberId, `🎁 ${er.reward} is ready at reception!`, "/rewards");
+    const { memberLocale } = await import("@/lib/engine");
+    const { translate } = await import("@/lib/i18n");
+    void sendPush(er.memberId, translate(memberLocale(er.memberId), "notif.rewardReady", { reward: er.reward }), "/rewards");
   }
-  if (status === "collected") notify(er.memberId, `Enjoy your ${er.reward}! Thanks for crushing ${er.challengeName}.`);
-  if (status === "declined")
-    notify(er.memberId, `About your ${er.challengeName} reward — please ask at reception for details.`);
+  if (status === "collected") notifyKey(er.memberId, "notif.rewardCollected", { reward: er.reward, challenge: er.challengeName });
+  if (status === "declined") notifyKey(er.memberId, "notif.rewardDeclined", { challenge: er.challengeName });
   saveDB();
   revalidatePath("/admin/redemptions");
   revalidatePath("/rewards");

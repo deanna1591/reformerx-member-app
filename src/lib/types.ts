@@ -106,6 +106,8 @@ export interface Booking {
   source: "wordpress" | "manual" | "simplybook" | "app";
   simplybookBookingId?: string;
   bookedAt?: string;
+  /** Set once the pre-class reminder has gone out, so it only sends once. */
+  reminderSentAt?: string;
 }
 
 export interface CheckIn {
