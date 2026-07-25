@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, currentStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers, renderNotification } from "@/lib/engine";
+import { computeProgress, memberWeekStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers, renderNotification } from "@/lib/engine";
 import { STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
 import CarriageProgress from "@/components/CarriageProgress";
@@ -64,7 +64,7 @@ export default async function Home() {
   const readyRewards = db.earnedRewards.filter((r) => r.memberId === member.id && r.status === "ready");
   const notifications = db.notifications.filter((n) => n.memberId === member.id).slice(0, 4);
   const unread = notifications.some((n) => !n.read);
-  const streak = currentStreak(member.id);
+  const streak = memberWeekStreak(member.id).current;
   const firstName = member.name.split(" ")[0];
 
   return (
@@ -75,9 +75,10 @@ export default async function Home() {
           <h1 className="mt-1 font-display text-[34px] leading-none">{t("home.greeting", { name: firstName })}</h1>
         </div>
         {streak > 0 && (
-          <div className="mt-0.5 min-w-[46px] rounded-full bg-ink px-2 pb-2 pt-2.5 text-center text-chalk">
-            <p className="font-display text-[20px] leading-none">{streak}</p>
-            <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-sage">day<br />streak</p>
+          <div className="mt-0.5 min-w-[46px] rounded-full bg-ink px-2 pb-2 pt-2 text-center text-chalk">
+            <p aria-hidden className="text-[11px] leading-none">🔥</p>
+            <p className="mt-1 font-display text-[20px] leading-none">{streak}</p>
+            <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-sage">{t("home.streakUnit")}<br />{t("home.streakWord")}</p>
           </div>
         )}
       </header>

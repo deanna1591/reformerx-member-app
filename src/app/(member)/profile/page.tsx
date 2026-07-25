@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
@@ -51,15 +52,15 @@ export default async function ProfilePage() {
         <p className="mt-1.5 text-[13px] text-white/70">
           {active ? `Valid until ${fmtDate(member.membershipExpires)}` : "Buy a pass to book classes."}
         </p>
-        <a href="/store" className="mt-3 inline-block rounded-full bg-sage px-4 py-2 text-[12px] font-semibold text-ink">
+        <Link href="/store" className="mt-3 inline-block rounded-full bg-sage px-4 py-2 text-[12px] font-semibold text-ink">
           {active ? "Renew or upgrade" : "Get a pass"}
-        </a>
+        </Link>
       </div>
 
       <div className="mb-5 grid grid-cols-3 gap-2">
-        <a href="/schedule" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Book</a>
-        <a href="/milestones" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Milestones</a>
-        <a href="/settings" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Settings</a>
+        <Link href="/schedule" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Book</Link>
+        <Link href="/milestones" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Milestones</Link>
+        <Link href="/settings" className="rounded-xl2 bg-card p-3 text-center shadow-card text-[12px] font-semibold">Settings</Link>
       </div>
 
       <div className="flex items-start justify-between">
@@ -75,7 +76,7 @@ export default async function ProfilePage() {
       <section className="mt-5 grid grid-cols-2 gap-3">
         {stat("Total classes", stats.total)}
         {stat(t("profile.hours"), stats.hours)}
-        {stat("Current streak", `${stats.streak}d`)}
+        {stat("Current streak", `${stats.streak}w`)}
         {stat("This month", stats.thisMonth)}
         {stat("Favourite coach", stats.favInstructor)}
         {stat("Favourite time", stats.favTime)}
@@ -86,13 +87,13 @@ export default async function ProfilePage() {
           <h2 className="font-display text-[22px]">Personal records</h2>
           <ShareButton
             label="Share"
-            text={`My ReformerX records: ${stats.total} classes, longest streak ${records.longestStreak} days${records.bestMonth ? `, best month ${records.bestMonth.count} classes` : ""}. 🖤`}
+            text={`My ReformerX records: ${stats.total} classes, longest streak ${records.longestStreak} weeks${records.bestMonth ? `, best month ${records.bestMonth.count} classes` : ""}. 🖤`}
           />
         </div>
         <div className="mt-3 divide-y divide-line rounded-xl2 border border-line bg-white">
           <div className="flex items-center justify-between px-4 py-3">
             <p className="text-[14px]">🔥 Longest streak</p>
-            <p className="text-[14px] font-semibold tabular-nums">{records.longestStreak} days</p>
+            <p className="text-[14px] font-semibold tabular-nums">{records.longestStreak} weeks</p>
           </div>
           <div className="flex items-center justify-between px-4 py-3">
             <p className="text-[14px]">📆 Best month</p>

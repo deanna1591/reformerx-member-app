@@ -1,5 +1,6 @@
 import { getDB, saveDB } from "./store";
 import { STUDIO_TZ, studioDayKey } from "./time";
+import { weekStreak, buildHeatmap } from "./streaks";
 import { translate, type Locale, type TranslationKey } from "./i18n";
 import { Challenge, CheckIn, Member } from "./types";
 
@@ -191,14 +192,8 @@ export function personalRecords(memberId: string) {
   const db = getDB();
   const mine = attendedClasses(memberId);
 
-  // longest streak ever
-  const days = Array.from(new Set(mine.map((a) => new Date(a.at).setHours(0, 0, 0, 0)))).sort((a, b) => a - b);
-  let longest = 0, run = 0, prev = 0;
-  for (const d of days) {
-    run = prev && d - prev === 86400000 ? run + 1 : 1;
-    longest = Math.max(longest, run);
-    prev = d;
-  }
+  // longest streak ever, in weeks — see memberWeekStreak for why days don't work here
+  const longest = weekStreak(mine.map((a) => a.at)).longest;
 
   // best month
   const byMonth: Record<string, number> = {};
@@ -226,17 +221,52 @@ export function personalRecords(memberId: string) {
   };
 }
 
+/**
+ * Consecutive-DAY streak. Only used by the `streak_days` challenge type, which
+ * is named in days to the member. For anything shown as "your streak", use
+ * memberWeekStreak — nobody trains seven days running, so this reads 0 or 1 for
+ * almost every member.
+ */
 export function currentStreak(memberId: string): number {
-  const days = new Set(attendedClasses(memberId).map((a) => new Date(a.at).toDateString()));
+  const days = new Set(attendedClasses(memberId).map((a) => studioDayKey(a.at)));
   let streak = 0;
   const d = new Date();
   // streak counts today if attended, otherwise starts from yesterday
-  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1);
-  while (days.has(d.toDateString())) {
+  if (!days.has(studioDayKey(d))) d.setDate(d.getDate() - 1);
+  while (days.has(studioDayKey(d))) {
     streak++;
     d.setDate(d.getDate() - 1);
   }
   return streak;
+}
+
+/** Attendance timestamps, the shared input for both week streaks and the heatmap. */
+const attendedAt = (memberId: string) => attendedClasses(memberId).map((a) => a.at);
+
+/**
+ * The streak members actually see: consecutive weeks with at least `weeklyGoal`
+ * classes. The week in progress never breaks a run, so nobody resets to zero
+ * every Monday at 00:01.
+ */
+export function memberWeekStreak(memberId: string, weeklyGoal = 1) {
+  return weekStreak(attendedAt(memberId), { weeklyGoal });
+}
+
+/**
+ * Monday-first attendance grid for the Milestones page.
+ *
+ * The window follows the member's real history rather than always spanning 18
+ * weeks: on a freshly seeded database that only reaches back 30 days, a fixed
+ * 18-week grid is three-quarters dead space and reads as broken. Clamped to
+ * 6 weeks so a brand-new member still gets a grid with some shape to it.
+ */
+export function memberHeatmap(memberId: string, maxWeeks = 18) {
+  const at = attendedAt(memberId);
+  const first = at[0];
+  const span = first
+    ? Math.ceil((Date.now() - new Date(first).getTime()) / (7 * 86400000)) + 1
+    : maxWeeks;
+  return buildHeatmap(at, { weeks: Math.min(maxWeeks, Math.max(6, span)) });
 }
 
 function awardBadges(memberId: string, checkIn: CheckIn): string[] {
@@ -269,7 +299,7 @@ function awardBadges(memberId: string, checkIn: CheckIn): string[] {
   }).length;
   if (weekendCount >= 5) give("bd-weekend");
 
-  if (currentStreak(memberId) >= 7) give("bd-streak");
+  if (memberWeekStreak(memberId).current >= 4) give("bd-streak");
 
   const member = db.members.find((m) => m.id === memberId);
   if (member && Date.now() - new Date(member.joinedAt).getTime() >= 365 * 24 * 3600 * 1000)
@@ -527,7 +557,7 @@ export function memberStats(memberId: string) {
     hours,
     favInstructor,
     favTime: favHour !== undefined ? `${favHour}:00` : "—",
-    streak: currentStreak(memberId),
+    streak: weekStreak(attendedAt(memberId)).current,
     thisMonth,
     rewardsCollected: db.earnedRewards.filter((r) => r.memberId === memberId && r.status === "collected").length,
   };
@@ -754,7 +784,7 @@ export function sendRenewalReminders(): { sent: number; names: string[] } {
     if (daysLeft < 0 || daysLeft > RENEWAL_WINDOW_DAYS) continue;
 
     const stats = memberStats(m.id);
-    const streak = currentStreak(m.id);
+    const streak = memberWeekStreak(m.id).current;
     // Lead with what they'd lose, not with the sale
     const key = streak >= 2 ? "notif.renewalStreak" : stats.total >= 5 ? "notif.renewalRegular" : "notif.renewal";
     notifyKey(m.id, key as TranslationKey, {

@@ -150,8 +150,8 @@ export default async function MemberDetail({ params }: { params: { id: string } 
         {[
           ["Total classes", stats.total],
           ["This month", stats.thisMonth],
-          ["Current streak", `${stats.streak}d`],
-          ["Longest streak", `${records.longestStreak}d`],
+          ["Current streak", `${stats.streak}w`],
+          ["Longest streak", `${records.longestStreak}w`],
           ["Hours", stats.hours],
           ["Fav coach", stats.favInstructor],
           ["Friends referred", records.referrals],

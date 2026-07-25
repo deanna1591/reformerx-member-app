@@ -272,7 +272,7 @@ function seed(): DB {
       { id: "bd-50", name: "Halfway to Legend", emoji: "⭐", description: "Fifty classes done." },
       { id: "bd-100", name: "Pilates Addict", emoji: "💯", description: "One hundred classes done." },
       { id: "bd-year", name: "1 Year Member", emoji: "🎂", description: "One year since you joined." },
-      { id: "bd-streak", name: "Consistency Champion", emoji: "🏅", description: "A 7-day class streak." },
+      { id: "bd-streak", name: "Consistency Champion", emoji: "🏅", description: "Four weeks of classes in a row." },
     ],
     earnedBadges: [
       { memberId: "m-you", badgeId: "bd-first", earnedAt: iso(daysFromNow(-259)) },

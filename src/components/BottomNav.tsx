@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const items = [
   { href: "/", label: "Home", icon: "M3 10.5 12 3l9 7.5M5 9.5V21h5v-6h4v6h5V9.5" },
@@ -13,18 +14,25 @@ const items = [
 
 export default function BottomNav({ labels }: { labels?: Record<string, string> }) {
   const pathname = usePathname();
+  // Server render can take a beat, so highlight the tapped tab optimistically
+  // rather than waiting for the route to actually commit. Using <Link> onClick
+  // instead of router.push keeps Next's prefetch on the hover/viewport path.
+  const [tapped, setTapped] = useState<string | null>(null);
+  useEffect(() => setTapped(null), [pathname]);
+  const current = tapped ?? pathname;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="flex items-center justify-around rounded-[26px] bg-ink px-2 py-2.5 shadow-lift">
         {items.map((item) => {
-          const active = pathname === item.href;
+          const active = current === item.href;
 
           if (item.href === "/checkin") {
             return (
               <Link
                 key={item.href}
                 href="/checkin"
+                onClick={() => setTapped("/checkin")}
                 aria-label="Check in"
                 className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-full bg-sage text-ink shadow-lift transition active:scale-95"
               >
@@ -42,6 +50,7 @@ export default function BottomNav({ labels }: { labels?: Record<string, string> 
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setTapped(item.href)}
               className={`flex min-w-[62px] flex-col items-center gap-1 rounded-2xl px-2 py-1.5 transition ${
                 active ? "text-white" : "text-white/45"
               }`}

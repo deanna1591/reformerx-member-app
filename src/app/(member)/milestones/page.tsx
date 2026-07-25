@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { ensureDB } from "@/lib/store";
-import { memberActivity, personalRecords } from "@/lib/engine";
+import { memberActivity, memberHeatmap, personalRecords } from "@/lib/engine";
+import Heatmap from "@/components/Heatmap";
 import { getT, getLocale, pluralClasses } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function MilestonesPage() {
   const locale = getLocale();
   const act = memberActivity(member.id);
   const records = personalRecords(member.id);
+  const heatmap = memberHeatmap(member.id);
   const total = act.attended;
 
   const next = TIERS.find((t) => t > total);
@@ -86,6 +88,10 @@ export default async function MilestonesPage() {
             <p className="font-display text-[26px] leading-none tabular-nums">{act.rewardsEarned}</p>
             <p className="mt-1.5 text-[11px] uppercase tracking-wider text-smoke">{t("miles.rewardsEarned")}</p>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <Heatmap data={heatmap} />
         </div>
 
         {next && (
