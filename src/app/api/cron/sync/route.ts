@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     const db = getDB();
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
     if (force) forceFullWrite();
-    const save = await saveDBAsync();
+    const save = await saveDBAsync({ verify: true });
     const verify = await verifyWrite();
     return NextResponse.json({
       ok: result.ok,

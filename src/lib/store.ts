@@ -413,6 +413,8 @@ export type SaveReport = {
   wrote?: string[];
   bytes?: number;
   remoteKnown?: boolean;
+  /** Only present when the caller asked for post-write verification. */
+  verified?: boolean;
 };
 
 async function supaSave(db: DB): Promise<{ wrote: string[]; bytes: number }> {
@@ -545,7 +547,18 @@ export function forceFullWrite(): void {
   globalThis.__rxdbWritten = {};
 }
 
-export async function saveDBAsync(): Promise<SaveReport> {
+/**
+ * `verify` reads db:settings back after the write and confirms it matches what
+ * we just sent. If it doesn't, the diff-tracker is cleared so the next save
+ * resends everything.
+ *
+ * This is the loop that was missing. The tracker records what Supabase is
+ * believed to hold so unchanged collections aren't resent; when that belief was
+ * wrong the two diverged permanently, because every later sync recomputed the
+ * same value and the diff reported "unchanged". Verification costs one small
+ * read, so sync paths opt in and member actions don't.
+ */
+export async function saveDBAsync(opts: { verify?: boolean } = {}): Promise<SaveReport> {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(globalThis.__rxdb, null, 2));
@@ -563,6 +576,26 @@ export async function saveDBAsync(): Promise<SaveReport> {
   try {
     const { wrote, bytes } = await supaSave(globalThis.__rxdb);
     globalThis.__rxdbLoadedAt = Date.now(); // our copy is now the newest
+
+    if (opts.verify && wrote.includes("db:settings")) {
+      const expected = globalThis.__rxdb.settings?.lastSync;
+      const check = await verifyWrite();
+      const landed = !check.error && check.lastSyncInDb === expected;
+      if (!landed) {
+        // What we believe Supabase holds is wrong. Drop the belief.
+        forceFullWrite();
+        return {
+          ok: false,
+          reason: `write reported success but did not land (${String(check.error ?? "value mismatch")}) — diff-tracker cleared, next save will be full`,
+          wrote,
+          bytes,
+          remoteKnown,
+          verified: false,
+        };
+      }
+      return { ok: true, wrote, bytes, remoteKnown, verified: true };
+    }
+
     if (wrote.length === 0) {
       return { ok: true, reason: "no changes to write", wrote, bytes, remoteKnown };
     }

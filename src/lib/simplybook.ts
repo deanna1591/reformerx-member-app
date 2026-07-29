@@ -1112,7 +1112,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
   // await, don't fire-and-forget: on Vercel the lambda is frozen the moment the
   // route returns, which kills any in-flight write. This is why every sync
   // looked successful while nothing ever changed in Supabase.
-  await saveDBAsync();
+  await saveDBAsync({ verify: true });
   return {
     ok: true,
     message,

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const result = await syncFromSimplybook();
     // syncFromSimplybook saves internally, but persist again here so the write
     // is definitely complete before this handler returns and the lambda dies.
-    await saveDBAsync();
+    await saveDBAsync({ verify: true });
     console.log("[simplybook webhook]", JSON.stringify(payload), "→", result.message);
     return NextResponse.json({ ok: true, synced: result.message });
   } catch (e) {
