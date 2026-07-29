@@ -407,7 +407,15 @@ async function supaLoad(): Promise<DB | null> {
   return null;
 }
 
-async function supaSave(db: DB): Promise<void> {
+export type SaveReport = {
+  ok: boolean;
+  reason?: string;
+  wrote?: string[];
+  bytes?: number;
+  remoteKnown?: boolean;
+};
+
+async function supaSave(db: DB): Promise<{ wrote: string[]; bytes: number }> {
   const written = globalThis.__rxdbWritten ?? {};
   const changed: Array<{ key: string; value: unknown; updated_at: string }> = [];
   const nextWritten: Partial<Record<Collection, string>> = { ...written };
@@ -422,7 +430,7 @@ async function supaSave(db: DB): Promise<void> {
     nextWritten[c] = serialised;
   }
 
-  if (changed.length === 0) return; // nothing to do
+  if (changed.length === 0) return { wrote: [], bytes: 0 }; // nothing to do
 
   const res = await fetch(`${SUPA_URL}/rest/v1/app_state?on_conflict=key`, {
     method: "POST",
@@ -434,6 +442,7 @@ async function supaSave(db: DB): Promise<void> {
   });
   if (!res.ok) throw new Error(`Supabase save failed: ${res.status} ${await res.text().catch(() => "")}`);
   globalThis.__rxdbWritten = nextWritten;
+  return { wrote: changed.map((c) => c.key), bytes: JSON.stringify(changed).length };
 }
 
 /** Await this at the top of every page/action/route before using getDB(). */
@@ -490,24 +499,32 @@ export function getDB(): DB {
 
 /** Await this after a mutation. Without it the next page render can read
  *  Supabase before the write has landed, and the member sees stale data. */
-export async function saveDBAsync(): Promise<void> {
+export async function saveDBAsync(): Promise<SaveReport> {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(globalThis.__rxdb, null, 2));
   } catch {
     /* read-only environments (Vercel): Supabase is the real store there */
   }
-  if (hasSupabase && globalThis.__rxdb) {
-    if (globalThis.__rxdbRemoteKnown !== true) {
-      console.error("[store] refusing to write: remote state unknown (read failed earlier)");
-      return;
+  if (!hasSupabase) return { ok: false, reason: "supabase not configured" };
+  if (!globalThis.__rxdb) return { ok: false, reason: "no in-memory db" };
+
+  const remoteKnown = globalThis.__rxdbRemoteKnown === true;
+  if (!remoteKnown) {
+    console.error("[store] refusing to write: remote state unknown (read failed earlier)");
+    return { ok: false, reason: "remote state unknown (read failed earlier)", remoteKnown: false };
+  }
+  try {
+    const { wrote, bytes } = await supaSave(globalThis.__rxdb);
+    globalThis.__rxdbLoadedAt = Date.now(); // our copy is now the newest
+    if (wrote.length === 0) {
+      return { ok: true, reason: "no changes to write", wrote, bytes, remoteKnown };
     }
-    try {
-      await supaSave(globalThis.__rxdb);
-      globalThis.__rxdbLoadedAt = Date.now(); // our copy is now the newest
-    } catch (e) {
-      console.error("[store] save failed:", e);
-    }
+    return { ok: true, wrote, bytes, remoteKnown };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[store] save failed:", msg);
+    return { ok: false, reason: msg, remoteKnown };
   }
 }
 

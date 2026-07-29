@@ -54,9 +54,11 @@ export async function GET(req: NextRequest) {
     }
     const db = getDB();
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
-    await saveDBAsync();
+    const save = await saveDBAsync();
     return NextResponse.json({
       ok: result.ok,
+      // Surfaced so a failed write can't masquerade as a successful sync again.
+      persisted: save,
       message: result.message,
       mode: quick ? "quick" : "full",
       newMembers: db.members.length - before,
