@@ -327,6 +327,8 @@ export interface SyncResult {
   bookings?: number;
   /** Why the timetable prune kept or removed each class. Diagnostic only. */
   pruneStats?: Record<string, unknown> | null;
+  /** Timetable ids built for a requested debugDate. Diagnostic only. */
+  debugIds?: string[];
 }
 
 /**
@@ -338,7 +340,7 @@ export interface SyncResult {
  *  and refreshes only what changes minute to minute: bookings, the timetable and
  *  remaining places. Designed to finish well inside a serverless timeout so it
  *  can run every few minutes. Run the full sync nightly for passes and members. */
-export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promise<SyncResult> {
+export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: string } = {}): Promise<SyncResult> {
   const quick = opts.quick === true;
   if (!simplybookConfigured()) {
     return {
@@ -728,6 +730,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      timetable no longer contains, so cancelled or rescheduled sessions vanish
      from the app instead of lingering. */
   let pruneStats: Record<string, unknown> | null = null;
+  let debugIds: string[] = [];
   let timetableSlots = 0; // slots SimplyBook listed this run
   let timetableNew = 0;   // of those, ones we hadn't seen before
   let timetableNote = "";
@@ -811,6 +814,9 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
               if (Number.isNaN(new Date(startsAt).getTime())) continue;
               const classId = `c-sb-${svc.id}-${startsAt}`;
               seenClassIds.add(classId);
+              if (opts.debugDate && (startsAt.startsWith(opts.debugDate) || day.date === opts.debugDate)) {
+                debugIds.push(`${day.date} ${time} svc=${svc.id} -> ${classId}`);
+              }
               timetableSlots++;
 
               let instructorId: string | undefined;
@@ -1098,6 +1104,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     memberships: membershipRows,
     bookings: bookingRows,
     pruneStats,
+    debugIds,
   };
 }
 

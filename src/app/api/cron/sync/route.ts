@@ -24,8 +24,9 @@ export async function GET(req: NextRequest) {
   // ?mode=full for the nightly run (members, passes, instructors);
   // default is the quick run — bookings, timetable and places only.
   const quick = new URL(req.url).searchParams.get("mode") !== "full";
+  const debugDate = new URL(req.url).searchParams.get("debugDate") ?? undefined;
   try {
-    const result = await syncFromSimplybook({ quick });
+    const result = await syncFromSimplybook({ quick, debugDate });
     // Nudge anyone whose pass runs out shortly (once per pass)
     const { sendRenewalReminders, memberLocale, dueClassReminders, markReminderSent } = await import("@/lib/engine");
     const { sendPush } = await import("@/lib/push");
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
       // Surfaced so a failed write can't masquerade as a successful sync again.
       persisted: save,
       pruneStats: result.pruneStats ?? null,
+      debugIds: result.debugIds ?? [],
       message: result.message,
       mode: quick ? "quick" : "full",
       newMembers: db.members.length - before,
