@@ -508,6 +508,39 @@ export function getDB(): DB {
  * after the lambda thawed — the two silently diverge forever, because each
  * later sync recomputes the same value and the diff reports "unchanged".
  */
+/**
+ * Read db:settings straight back out of Supabase after a write.
+ *
+ * PostgREST reports an upsert as successful even when RLS filters it down to
+ * zero affected rows, so "ok" from supaSave is not proof the data landed.
+ * Also reports the project host, to catch the case where the lambda and a
+ * local script are pointed at different Supabase projects entirely.
+ */
+export async function verifyWrite(): Promise<Record<string, unknown>> {
+  let host = "(unset)";
+  try { host = new URL(SUPA_URL).host; } catch { /* malformed or empty */ }
+  if (!hasSupabase) return { host, error: "supabase not configured" };
+  try {
+    const res = await fetch(
+      `${SUPA_URL}/rest/v1/app_state?key=eq.db:settings&select=key,value,updated_at`,
+      { headers: supaHeaders(), cache: "no-store" }
+    );
+    const body = await res.text();
+    if (!res.ok) return { host, status: res.status, error: body.slice(0, 300) };
+    const rows = JSON.parse(body) as Array<{ value?: { lastSync?: string }; updated_at?: string }>;
+    if (rows.length === 0) return { host, status: res.status, error: "no db:settings row found" };
+    return {
+      host,
+      status: res.status,
+      updated_at: rows[0].updated_at,
+      lastSyncInDb: rows[0].value?.lastSync ?? "(none)",
+      keyUsed: (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").slice(0, 12) + "...",
+    };
+  } catch (e) {
+    return { host, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export function forceFullWrite(): void {
   globalThis.__rxdbWritten = {};
 }

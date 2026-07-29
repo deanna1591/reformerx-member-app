@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDB, getDB, saveDBAsync, forceFullWrite } from "@/lib/store";
+import { ensureDB, getDB, saveDBAsync, forceFullWrite, verifyWrite } from "@/lib/store";
 import { syncFromSimplybook, simplybookConfigured } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
@@ -58,10 +58,12 @@ export async function GET(req: NextRequest) {
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
     if (force) forceFullWrite();
     const save = await saveDBAsync();
+    const verify = await verifyWrite();
     return NextResponse.json({
       ok: result.ok,
       // Surfaced so a failed write can't masquerade as a successful sync again.
       persisted: save,
+      verify,
       pruneStats: result.pruneStats ?? null,
       debugIds: result.debugIds ?? [],
       debugClasses: result.debugClasses ?? [],
