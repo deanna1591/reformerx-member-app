@@ -590,6 +590,58 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     }
   }
 
+  /* 3.3 — Orphaned bookings. The loop above only ever visits rows the feed
+     returns, so it catches bookings SimplyBook marks cancelled. When the studio
+     deletes a class outright the rows simply stop appearing, and the local
+     booking survives — which in turn keeps the dead class alive, because the
+     timetable prune spares anything that still has a booking.
+
+     Deliberately narrow, because the failure mode here is destroying real data:
+       - only rows this sync could have seen (inside the fetched window)
+       - only FUTURE classes; past bookings are the attendance record that
+         streaks, milestones and the heatmap are all computed from
+       - only SimplyBook-sourced rows
+       - only when the feed actually returned something, so an RPC blip can't
+         wipe the table
+       - a grace period, so a booking made seconds ago isn't culled by a
+         snapshot fetched just before it existed */
+  let orphanedBookings = 0;
+  if (bookings.length > 0) {
+    const seenBookingIds = new Set(bookings.map((b) => `b-sb-${b.id}`));
+    const windowFrom = new Date(`${from}T00:00:00`).getTime();
+    const windowTo = new Date(`${to}T23:59:59`).getTime();
+    const GRACE_MS = 10 * 60000;
+    const now = Date.now();
+
+    const keptBookings = db.bookings.filter((bk) => {
+      if (bk.source !== "simplybook" && !bk.id.startsWith("b-sb-")) return true;
+      if (seenBookingIds.has(bk.id)) return true;
+      if (bk.bookedAt && now - new Date(bk.bookedAt).getTime() < GRACE_MS) return true;
+
+      const cls = db.classes.find((c) => c.id === bk.classId);
+      if (!cls) return true;
+      const t = new Date(cls.startsAt).getTime();
+      if (t <= now) return true;                       // already happened — history
+      if (t < windowFrom || t > windowTo) return true; // outside what we fetched
+
+      studioCancellations.push({
+        memberId: bk.memberId,
+        title: cls.title,
+        when: new Date(cls.startsAt).toLocaleString("en-GB", {
+          timeZone: STUDIO_TZ_FOR_SYNC,
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+      return false;
+    });
+    orphanedBookings = db.bookings.length - keptBookings.length;
+    db.bookings = keptBookings;
+  }
+
   /* Tell members whose class the studio cancelled — their booking is gone and
      they would otherwise only find out by noticing it missing. */
   for (const c of studioCancellations) {
@@ -1019,7 +1071,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
   }
 
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
-  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
+  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings${orphanedBookings ? `, ${orphanedBookings} orphaned removed` : ""} [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
   db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
   saveDB();
   return {
