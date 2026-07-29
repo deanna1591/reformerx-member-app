@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DB, StudioClass, Booking, CheckIn, Member } from "./types";
+import { BUILTIN_BADGE_DEFS } from "./badges";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "db.json");
@@ -264,16 +265,7 @@ function seed(): DB {
       { memberId: "m-jana", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
       { memberId: "m-you", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
     ],
-    badgeDefs: [
-      { id: "bd-first", name: "First Class", emoji: "✨", description: "Your very first class at ReformerX." },
-      { id: "bd-early", name: "Early Bird", emoji: "🌅", description: "Checked in to a class before 9:00." },
-      { id: "bd-weekend", name: "Weekend Warrior", emoji: "🛡️", description: "5 weekend classes completed." },
-      { id: "bd-10", name: "10 Classes", emoji: "🔟", description: "Ten classes done." },
-      { id: "bd-50", name: "Halfway to Legend", emoji: "⭐", description: "Fifty classes done." },
-      { id: "bd-100", name: "Pilates Addict", emoji: "💯", description: "One hundred classes done." },
-      { id: "bd-year", name: "1 Year Member", emoji: "🎂", description: "One year since you joined." },
-      { id: "bd-streak", name: "Consistency Champion", emoji: "🏅", description: "Four weeks of classes in a row." },
-    ],
+    badgeDefs: BUILTIN_BADGE_DEFS.slice(),
     earnedBadges: [
       { memberId: "m-you", badgeId: "bd-first", earnedAt: iso(daysFromNow(-259)) },
       { memberId: "m-you", badgeId: "bd-10", earnedAt: iso(daysFromNow(-120)) },

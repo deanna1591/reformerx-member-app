@@ -4,8 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDB, saveDB, saveDBAsync, ensureDB, resetDB } from "@/lib/store";
-import { performCheckIn, notify, notifyKey, CheckInResult } from "@/lib/engine";
+import { performCheckIn, notify, notifyKey, CheckInResult, markBadgesCelebrated } from "@/lib/engine";
 import { currentMember } from "@/lib/auth";
+import { BUILTIN_BADGE_IDS } from "@/lib/badges";
 import { Member, Challenge } from "@/lib/types";
 
 /* ---------- auth ---------- */
@@ -1063,4 +1064,57 @@ export async function addStarterChallenges() {
   await saveDBAsync();
   revalidatePath("/admin/challenges");
   redirect(`/admin/challenges?added=${added}`);
+}
+
+
+/** Called by the home-screen celebration once the member has seen their badges. */
+export async function dismissBadgeCelebration(): Promise<void> {
+  const member = await currentMember();
+  if (!member) return;
+  await ensureDB();
+  markBadgesCelebrated(member.id);
+  await saveDBAsync();
+  revalidatePath("/");
+}
+
+
+/** Owner-created badge. Awards automatically once a member hits the class count. */
+export async function saveBadge(fd: FormData): Promise<void> {
+  const { isOwner } = require("@/lib/staff") as typeof import("@/lib/staff");
+  if (!isOwner()) return;
+  await ensureDB();
+  const db = getDB();
+  const name = String(fd.get("name") ?? "").trim().slice(0, 40);
+  const description = String(fd.get("description") ?? "").trim().slice(0, 120);
+  const classesRequired = Math.max(1, Math.min(2000, parseInt(String(fd.get("classesRequired") ?? "0"), 10) || 0));
+  const imageUrl = String(fd.get("imageUrl") ?? "");
+  if (!name || !classesRequired) return;
+  // 100 KB cap enforced in the browser too; re-checked here because a form post
+  // can be crafted by hand and a huge data URL would bloat every DB read.
+  const safeImage = imageUrl.startsWith("data:image/") && imageUrl.length < 140_000 ? imageUrl : undefined;
+
+  db.badgeDefs.push({
+    id: `bd-custom-${Date.now().toString(36)}`,
+    name,
+    description,
+    emoji: safeImage ? "🏆" : "🏆",
+    imageUrl: safeImage,
+    classesRequired,
+    custom: true,
+  });
+  await saveDBAsync();
+  revalidatePath("/admin/badges");
+}
+
+export async function deleteBadge(fd: FormData): Promise<void> {
+  const { isOwner } = require("@/lib/staff") as typeof import("@/lib/staff");
+  if (!isOwner()) return;
+  await ensureDB();
+  const db = getDB();
+  const badgeId = String(fd.get("badgeId") ?? "");
+  if (!badgeId || BUILTIN_BADGE_IDS.has(badgeId)) return; // built-ins are code, not data
+  db.badgeDefs = db.badgeDefs.filter((b) => b.id !== badgeId);
+  db.earnedBadges = db.earnedBadges.filter((b) => b.badgeId !== badgeId);
+  await saveDBAsync();
+  revalidatePath("/admin/badges");
 }

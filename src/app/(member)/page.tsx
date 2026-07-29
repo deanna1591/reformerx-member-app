@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress, memberWeekStreak, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers, renderNotification } from "@/lib/engine";
+import BadgeCelebration from "@/components/BadgeCelebration";
+import { dismissBadgeCelebration } from "@/app/actions";
+import { computeProgress, memberWeekStreak, uncelebratedBadges, fmtDate, fmtTime, membershipActive, passUsage, pendingOffers, renderNotification } from "@/lib/engine";
 import { STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
 import CarriageProgress from "@/components/CarriageProgress";
@@ -65,9 +67,25 @@ export default async function Home() {
   const notifications = db.notifications.filter((n) => n.memberId === member.id).slice(0, 4);
   const unread = notifications.some((n) => !n.read);
   const streak = memberWeekStreak(member.id).current;
+  // Badges earned since the member last opened the app get a one-time animation.
+  const toCelebrate = uncelebratedBadges(member.id).map(({ def }) => ({
+    id: def.id,
+    name: def.name,
+    emoji: def.emoji,
+    imageUrl: def.imageUrl,
+    description: def.description,
+  }));
   const firstName = member.name.split(" ")[0];
 
   return (
+    <>
+      {toCelebrate.length > 0 && (
+        <BadgeCelebration
+          badges={toCelebrate}
+          onSeen={dismissBadgeCelebration}
+          labels={{ title: t("badge.unlocked"), dismiss: t("badge.nice") }}
+        />
+      )}
     <main className="px-5 pt-[max(1.5rem,env(safe-area-inset-top))]">
       <header className="rise flex items-start justify-between">
         <div>
@@ -316,5 +334,6 @@ export default async function Home() {
         </section>
       )}
     </main>
+    </>
   );
 }

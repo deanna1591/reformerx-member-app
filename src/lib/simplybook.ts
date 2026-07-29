@@ -13,6 +13,8 @@
  *   SIMPLYBOOK_API_BASE   default "https://user-api-v2.simplybook.it"
  */
 import { getDB, saveDBAsync } from "./store";
+import { BUILTIN_BADGE_DEFS } from "./badges";
+import { awardBadgesForAll } from "./engine";
 import { studioToISO, isoToStudioString, studioDayKey, STUDIO_TZ } from "./time";
 const STUDIO_TZ_FOR_SYNC = STUDIO_TZ;
 
@@ -1113,7 +1115,15 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
   }
 
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
-  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings${orphanedBookings ? `, ${orphanedBookings} orphaned removed` : ""} [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
+  // Backfill any badge definitions added since this database was created, then
+  // re-evaluate every member. Badges used to be awarded only when someone
+  // scanned in, so most members were never assessed at all.
+  for (const def of BUILTIN_BADGE_DEFS) {
+    if (!db.badgeDefs.some((b) => b.id === def.id)) db.badgeDefs.push({ ...def });
+  }
+  const badgesAwarded = awardBadgesForAll();
+
+  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings${orphanedBookings ? `, ${orphanedBookings} orphaned removed` : ""} [${bookingSource}, ${bookingDays}d], ${badgesAwarded} badges awarded, ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
   db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
   // await, don't fire-and-forget: on Vercel the lambda is frozen the moment the
   // route returns, which kills any in-flight write. This is why every sync

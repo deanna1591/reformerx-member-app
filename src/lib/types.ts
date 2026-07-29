@@ -162,12 +162,20 @@ export interface BadgeDef {
   name: string;
   emoji: string;
   description: string;
+  /** Owner-uploaded artwork as a data URL. Shown instead of the emoji. */
+  imageUrl?: string;
+  /** Custom badges only: classes attended needed to earn it automatically. */
+  classesRequired?: number;
+  /** True for owner-created badges; built-ins are defined in code. */
+  custom?: boolean;
 }
 
 export interface EarnedBadge {
   memberId: string;
   badgeId: string;
   earnedAt: string;
+  /** Set once the member has seen the celebration on the home screen. */
+  celebrated?: boolean;
 }
 
 /** A reward earned by completing a challenge. Lifecycle:

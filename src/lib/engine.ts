@@ -1,6 +1,7 @@
 import { getDB, saveDB } from "./store";
 import { STUDIO_TZ, studioDayKey } from "./time";
 import { weekStreak, buildHeatmap } from "./streaks";
+import { qualifyingBadges, type BadgeInput } from "./badges";
 import { translate, type Locale, type TranslationKey } from "./i18n";
 import { Challenge, CheckIn, Member } from "./types";
 
@@ -118,7 +119,7 @@ export function recordAttendance(memberId: string, classId: string) {
   }
 
   // Badges
-  const newBadges = awardBadges(memberId, checkIn);
+  const newBadges = awardBadges(memberId);
   for (const b of newBadges) notifyKey(memberId, "notif.badge", { badge: b });
 
   return { checkIn, completedChallenges, earnedRewards, newBadges };
@@ -217,7 +218,7 @@ export function personalRecords(memberId: string) {
     bestMonth: best ? { label: bestMonthLabel!, count: best[1] } : null,
     firstClass: mine[0]?.at ?? null,
     earliestClassTime: earliest ? fmtTime(earliest.startsAt) : null,
-    referrals: db.members.filter((m) => m.referredBy === memberId && db.checkIns.some((ci) => ci.memberId === m.id)).length,
+    referrals: db.members.filter((m) => m.referredBy === memberId && attendedClasses(m.id).length > 0).length,
   };
 }
 
@@ -269,43 +270,67 @@ export function memberHeatmap(memberId: string, maxWeeks = 18) {
   return buildHeatmap(at, { weeks: Math.min(maxWeeks, Math.max(6, span)) });
 }
 
-function awardBadges(memberId: string, checkIn: CheckIn): string[] {
+/**
+ * Evaluate every badge for a member and award any newly qualifying ones.
+ *
+ * Counts attendance, not QR scans — the old version read db.checkIns, which
+ * holds a couple of dozen rows, so thresholds like "100 classes" were
+ * effectively unreachable. Safe to call repeatedly: already-earned badges are
+ * skipped, so the sync can run this for everyone on every cycle.
+ */
+export function awardBadges(memberId: string): string[] {
   const db = getDB();
-  const mine = db.checkIns.filter((ci) => ci.memberId === memberId);
-  const has = (badgeId: string) =>
-    db.earnedBadges.some((b) => b.memberId === memberId && b.badgeId === badgeId);
-  const earned: string[] = [];
-  const give = (badgeId: string) => {
-    if (has(badgeId)) return;
-    const def = db.badgeDefs.find((b) => b.id === badgeId);
-    if (!def) return;
-    db.earnedBadges.push({ memberId, badgeId, earnedAt: new Date().toISOString() });
-    earned.push(`${def.emoji} ${def.name}`);
+  const member = db.members.find((m) => m.id === memberId);
+  if (!member) return [];
+
+  const input: BadgeInput = {
+    attendedAt: attendedClasses(memberId).map((a) => a.at),
+    member,
+    referrals: db.members.filter(
+      (m) => m.referredBy === memberId && attendedClasses(m.id).length > 0
+    ).length,
+    weekStreak: memberWeekStreak(memberId).current,
   };
 
-  const total = mine.length;
-  if (total >= 1) give("bd-first");
-  if (total >= 10) give("bd-10");
-  if (total >= 50) give("bd-50");
-  if (total >= 100) give("bd-100");
-
-  const cls = db.classes.find((c) => c.id === checkIn.classId);
-  if (cls && new Date(cls.startsAt).getHours() < 9) give("bd-early");
-
-  const weekendCount = mine.filter((ci) => {
-    const c = db.classes.find((x) => x.id === ci.classId);
-    const day = c ? new Date(c.startsAt).getDay() : -1;
-    return day === 0 || day === 6;
-  }).length;
-  if (weekendCount >= 5) give("bd-weekend");
-
-  if (memberWeekStreak(memberId).current >= 4) give("bd-streak");
-
-  const member = db.members.find((m) => m.id === memberId);
-  if (member && Date.now() - new Date(member.joinedAt).getTime() >= 365 * 24 * 3600 * 1000)
-    give("bd-year");
-
+  const earned: string[] = [];
+  for (const badgeId of qualifyingBadges(input, db.badgeDefs)) {
+    if (db.earnedBadges.some((b) => b.memberId === memberId && b.badgeId === badgeId)) continue;
+    const def = db.badgeDefs.find((b) => b.id === badgeId);
+    if (!def) continue;
+    db.earnedBadges.push({
+      memberId,
+      badgeId,
+      earnedAt: new Date().toISOString(),
+      celebrated: false, // the home screen plays an animation, then sets this
+    });
+    earned.push(`${def.emoji} ${def.name}`);
+  }
   return earned;
+}
+
+/** Run the badge check for every member. Used by the sync. */
+export function awardBadgesForAll(): number {
+  const db = getDB();
+  let n = 0;
+  for (const m of db.members) n += awardBadges(m.id).length;
+  return n;
+}
+
+/** Badges a member has not yet seen celebrated, for the home screen. */
+export function uncelebratedBadges(memberId: string) {
+  const db = getDB();
+  return db.earnedBadges
+    .filter((b) => b.memberId === memberId && b.celebrated !== true)
+    .map((b) => ({ earned: b, def: db.badgeDefs.find((d) => d.id === b.badgeId) }))
+    .filter((x): x is { earned: typeof x.earned; def: NonNullable<typeof x.def> } => Boolean(x.def));
+}
+
+/** Marks every outstanding celebration as seen. */
+export function markBadgesCelebrated(memberId: string): void {
+  const db = getDB();
+  for (const b of db.earnedBadges) {
+    if (b.memberId === memberId) b.celebrated = true;
+  }
 }
 
 export function notify(memberId: string, text: string) {
