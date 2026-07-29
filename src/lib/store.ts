@@ -370,9 +370,32 @@ function rowKey(c: Collection) {
   return `db:${c}`;
 }
 
+/**
+ * Supabase fetch with a hard timeout.
+ *
+ * fetch() has no default timeout, so a stalled connection consumes the entire
+ * lambda budget and the caller sees a 504. Ten seconds is far beyond a healthy
+ * read (measured at ~1.5s for the full 1.6 MB), so anything slower is a fault
+ * and should fail fast: ensureDB then serves the cached copy instead of hanging.
+ */
+async function supaFetch(url: string, init: RequestInit = {}, ms = 10_000): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(`Supabase request timed out after ${ms}ms: ${url.split("?")[0]}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function supaLoad(): Promise<DB | null> {
   const keys = COLLECTIONS.map((c) => `"${rowKey(c)}"`).join(",");
-  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?key=in.(${keys})&select=key,value`, {
+  const res = await supaFetch(`${SUPA_URL}/rest/v1/app_state?key=in.(${keys})&select=key,value`, {
     headers: supaHeaders(),
     cache: "no-store",
   });
@@ -394,7 +417,7 @@ async function supaLoad(): Promise<DB | null> {
 
   // Nothing split yet — fall back to the original single-document row and
   // migrate it on the next write.
-  const legacy = await fetch(`${SUPA_URL}/rest/v1/app_state?key=eq.db&select=value`, {
+  const legacy = await supaFetch(`${SUPA_URL}/rest/v1/app_state?key=eq.db&select=value`, {
     headers: supaHeaders(),
     cache: "no-store",
   });
@@ -434,7 +457,7 @@ async function supaSave(db: DB): Promise<{ wrote: string[]; bytes: number }> {
 
   if (changed.length === 0) return { wrote: [], bytes: 0 }; // nothing to do
 
-  const res = await fetch(`${SUPA_URL}/rest/v1/app_state?on_conflict=key`, {
+  const res = await supaFetch(`${SUPA_URL}/rest/v1/app_state?on_conflict=key`, {
     method: "POST",
     headers: {
       ...supaHeaders(),
@@ -523,7 +546,7 @@ export async function verifyWrite(): Promise<Record<string, unknown>> {
   try { host = new URL(SUPA_URL).host; } catch { /* malformed or empty */ }
   if (!hasSupabase) return { host, error: "supabase not configured" };
   try {
-    const res = await fetch(
+    const res = await supaFetch(
       `${SUPA_URL}/rest/v1/app_state?key=eq.db:settings&select=key,value,updated_at`,
       { headers: supaHeaders(), cache: "no-store" }
     );

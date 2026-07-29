@@ -38,9 +38,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Health check so you can verify the URL in a browser after deploying. */
+/** Health check so you can verify the URL in a browser after deploying.
+ *  Deliberately does NOT touch the database: a health check that can hang on a
+ *  slow read is worse than useless, and this only reports configuration. */
 export async function GET() {
-  await ensureDB();
   return NextResponse.json({
     ok: true,
     endpoint: "SimplyBook webhook",

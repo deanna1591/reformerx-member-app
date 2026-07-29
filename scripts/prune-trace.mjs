@@ -31,12 +31,11 @@ const SKEY = env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const sHeaders = { apikey: SKEY, Authorization: `Bearer ${SKEY}` };
 
 async function collection(name) {
-  const r = await fetch(`${SUPA}/rest/v1/app_state?key=eq.${name}&select=value`, { headers: sHeaders });
+  const r = await fetch(`${SUPA}/rest/v1/app_state?key=eq.db:${name}&select=value`, { headers: sHeaders });
   const rows = await r.json();
   if (rows.length && rows[0].value != null) return rows[0].value;
-  const l = await fetch(`${SUPA}/rest/v1/app_state?key=eq.db&select=value`, { headers: sHeaders });
-  const lr = await l.json();
-  return lr.length && lr[0].value?.[name] ? lr[0].value[name] : [];
+  console.error(`  !! no db:${name} row found — not falling back to the legacy blob`);
+  return [];
 }
 
 const classes = await collection("classes");

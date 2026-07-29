@@ -39,17 +39,12 @@ if (!URL_ || !KEY) {
 const headers = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
 async function loadCollection(name) {
-  const res = await fetch(`${URL_}/rest/v1/app_state?key=eq.${name}&select=value`, { headers });
+  const res = await fetch(`${URL_}/rest/v1/app_state?key=eq.db:${name}&select=value`, { headers });
   if (!res.ok) throw new Error(`${name}: ${res.status} ${await res.text()}`);
   const rows = await res.json();
   if (rows.length && rows[0].value != null) return rows[0].value;
 
-  // older single-blob layout
-  const legacy = await fetch(`${URL_}/rest/v1/app_state?key=eq.db&select=value`, { headers });
-  if (legacy.ok) {
-    const lr = await legacy.json();
-    if (lr.length && lr[0].value && lr[0].value[name]) return lr[0].value[name];
-  }
+  console.error(`  !! no db:${name} row found — not falling back to the legacy blob`);
   return [];
 }
 
