@@ -329,6 +329,7 @@ export interface SyncResult {
   pruneStats?: Record<string, unknown> | null;
   /** Timetable ids built for a requested debugDate. Diagnostic only. */
   debugIds?: string[];
+  debugClasses?: string[];
 }
 
 /**
@@ -731,6 +732,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
      from the app instead of lingering. */
   let pruneStats: Record<string, unknown> | null = null;
   let debugIds: string[] = [];
+  let debugClasses: string[] = [];
   let timetableSlots = 0; // slots SimplyBook listed this run
   let timetableNew = 0;   // of those, ones we hadn't seen before
   let timetableNote = "";
@@ -886,6 +888,20 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
         });
         prunedClasses = db.classes.length - keep.length;
         db.classes = keep;
+        if (opts.debugDate) {
+          for (const c of db.classes) {
+            if (!String(c.startsAt).startsWith(opts.debugDate)) continue;
+            const tt = new Date(c.startsAt).getTime();
+            const nb = db.bookings.filter((b) => b.classId === c.id).length;
+            const verdict = tt <= Date.now() ? "past"
+              : tt > horizonMs ? "beyondHorizon"
+              : seenClassIds.has(c.id) ? "onTimetable"
+              : nb > 0 ? `hasBooking(${nb})`
+              : !c.serviceId || !coveredServiceIds.has(String(c.serviceId)) ? "serviceNotCovered"
+              : "REMOVED";
+            debugClasses.push(`${c.id} | svc=${c.serviceId ?? "-"} | bookings=${nb} | ${verdict}`);
+          }
+        }
         pruneStats = {
           ...why,
           seenClassIds: seenClassIds.size,
@@ -1105,6 +1121,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
     bookings: bookingRows,
     pruneStats,
     debugIds,
+    debugClasses,
   };
 }
 

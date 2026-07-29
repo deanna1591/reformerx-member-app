@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
       persisted: save,
       pruneStats: result.pruneStats ?? null,
       debugIds: result.debugIds ?? [],
+      debugClasses: result.debugClasses ?? [],
       message: result.message,
       mode: quick ? "quick" : "full",
       newMembers: db.members.length - before,
