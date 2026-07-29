@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDB, getDB, saveDB } from "@/lib/store";
+import { ensureDB, getDB, saveDBAsync } from "@/lib/store";
 import { syncFromSimplybook, simplybookConfigured } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     }
     const db = getDB();
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
-    saveDB();
+    await saveDBAsync();
     return NextResponse.json({
       ok: result.ok,
       message: result.message,

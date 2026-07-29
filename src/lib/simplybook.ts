@@ -12,7 +12,7 @@
  * Optional:
  *   SIMPLYBOOK_API_BASE   default "https://user-api-v2.simplybook.it"
  */
-import { getDB, saveDB } from "./store";
+import { getDB, saveDBAsync } from "./store";
 import { studioToISO, isoToStudioString, studioDayKey, STUDIO_TZ } from "./time";
 const STUDIO_TZ_FOR_SYNC = STUDIO_TZ;
 
@@ -1073,7 +1073,10 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
   const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings${orphanedBookings ? `, ${orphanedBookings} orphaned removed` : ""} [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
   db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
-  saveDB();
+  // await, don't fire-and-forget: on Vercel the lambda is frozen the moment the
+  // route returns, which kills any in-flight write. This is why every sync
+  // looked successful while nothing ever changed in Supabase.
+  await saveDBAsync();
   return {
     ok: true,
     message,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDB } from "@/lib/store";
+import { ensureDB, saveDBAsync } from "@/lib/store";
 import { simplybookConfigured, syncFromSimplybook } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
   }
   try {
     const result = await syncFromSimplybook();
+    // syncFromSimplybook saves internally, but persist again here so the write
+    // is definitely complete before this handler returns and the lambda dies.
+    await saveDBAsync();
     console.log("[simplybook webhook]", JSON.stringify(payload), "→", result.message);
     return NextResponse.json({ ok: true, synced: result.message });
   } catch (e) {
