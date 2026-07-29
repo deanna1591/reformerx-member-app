@@ -499,6 +499,19 @@ export function getDB(): DB {
 
 /** Await this after a mutation. Without it the next page render can read
  *  Supabase before the write has landed, and the member sees stale data. */
+/**
+ * Clears the diff-tracker so the next save writes every collection.
+ *
+ * The tracker records what we believe Supabase already holds, to avoid
+ * resending unchanged collections. If it ever records a value that did not
+ * actually land — which the old fire-and-forget write could do, by resolving
+ * after the lambda thawed — the two silently diverge forever, because each
+ * later sync recomputes the same value and the diff reports "unchanged".
+ */
+export function forceFullWrite(): void {
+  globalThis.__rxdbWritten = {};
+}
+
 export async function saveDBAsync(): Promise<SaveReport> {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });

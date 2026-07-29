@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDB, getDB, saveDBAsync } from "@/lib/store";
+import { ensureDB, getDB, saveDBAsync, forceFullWrite } from "@/lib/store";
 import { syncFromSimplybook, simplybookConfigured } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   // default is the quick run — bookings, timetable and places only.
   const quick = new URL(req.url).searchParams.get("mode") !== "full";
   const debugDate = new URL(req.url).searchParams.get("debugDate") ?? undefined;
+  const force = new URL(req.url).searchParams.get("force") === "1";
   try {
     const result = await syncFromSimplybook({ quick, debugDate });
     // Nudge anyone whose pass runs out shortly (once per pass)
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
     }
     const db = getDB();
     db.settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message} (auto)`;
+    if (force) forceFullWrite();
     const save = await saveDBAsync();
     return NextResponse.json({
       ok: result.ok,
