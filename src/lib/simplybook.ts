@@ -673,7 +673,9 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      fabricated classes that don't exist. We also prune future classes that the
      timetable no longer contains, so cancelled or rescheduled sessions vanish
      from the app instead of lingering. */
-  let timetableSlots = 0;
+  let timetableSlots = 0; // slots SimplyBook listed this run
+  let timetableNew = 0;   // of those, ones we hadn't seen before
+  let timetableNote = "";
   let prunedClasses = 0;
   if (process.env.SIMPLYBOOK_SYNC_TIMETABLE !== "0") {
     try {
@@ -705,12 +707,21 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
       const tFrom = studioDayKey(new Date());
       const tTo = studioDayKey(new Date(Date.now() + horizonDays * 86400000));
       const seenClassIds = new Set<string>();
+      // Which service/provider pairs this run actually asked about. The prune
+      // below is scoped to these — otherwise running out of call budget looks
+      // identical to "SimplyBook dropped the class" and we delete a real one.
+      const coveredServiceIds = new Set<string>();
+      const callBudget = Math.max(10, Number(process.env.SIMPLYBOOK_TIMETABLE_CALLS ?? 240) || 240);
       let calls = 0;
+      let truncated = false;
       let timetableOk = false;
 
       for (const svc of services.filter((x) => x.is_active !== false)) {
         for (const pid of (svc.providers ?? []).length ? svc.providers! : [undefined]) {
-          if (calls >= 60) break;
+          if (calls >= callBudget) {
+            truncated = true;
+            break;
+          }
           calls++;
           const q = new URLSearchParams({
             service_id: String(svc.id),
@@ -718,13 +729,21 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
             date_to: tTo,
             count: "1",
             skip_min_max_restriction: "0",
-            with_available_slots: "1",
           });
+          // with_available_slots=1 makes SimplyBook return only slots that still
+          // have room, so a class vanishes from the timetable the moment it
+          // fills up. available_count was never read here anyway — fullness is
+          // derived from booking counts in classIsFull(). Set
+          // SIMPLYBOOK_TIMETABLE_AVAILABLE_ONLY=1 to restore the old behaviour.
+          if (process.env.SIMPLYBOOK_TIMETABLE_AVAILABLE_ONLY === "1") {
+            q.set("with_available_slots", "1");
+          }
           if (pid) q.set("provider_id", String(pid));
           let days: Array<{ date?: string; slots?: Array<{ time?: string; available_count?: number }> }> = [];
           try {
             days = await sb<typeof days>(`/admin/timeline/slots?${q.toString()}`);
             timetableOk = true;
+            coveredServiceIds.add(String(svc.id));
           } catch {
             continue;
           }
@@ -737,6 +756,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
               if (Number.isNaN(new Date(startsAt).getTime())) continue;
               const classId = `c-sb-${svc.id}-${startsAt}`;
               seenClassIds.add(classId);
+              timetableSlots++;
 
               let instructorId: string | undefined;
               if (pid) {
@@ -772,11 +792,16 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
                   unitId: pid ? String(pid) : undefined,
                   capacity: cap,
                 });
-                timetableSlots++;
+                timetableNew++;
               }
             }
           }
         }
+      }
+
+      if (truncated) {
+        timetableNote = ` (TRUNCATED at ${callBudget} calls — raise SIMPLYBOOK_TIMETABLE_CALLS)`;
+        console.warn("[simplybook] timetable call budget exhausted; some services were not queried");
       }
 
       // Prune future classes SimplyBook no longer lists — unless somebody is
@@ -788,13 +813,18 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
           if (t <= Date.now() || t > horizonMs) return true; // past or beyond horizon
           if (seenClassIds.has(c.id)) return true; // still on the timetable
           if (db.bookings.some((b) => b.classId === c.id)) return true; // someone is booked
+          // Never delete a class belonging to a service we didn't manage to
+          // query this run — silence isn't evidence of removal.
+          if (!c.serviceId || !coveredServiceIds.has(String(c.serviceId))) return true;
           return false;
         });
         prunedClasses = db.classes.length - keep.length;
         db.classes = keep;
       }
-    } catch {
-      /* timetable is a bonus — never fail the sync over it */
+    } catch (e) {
+      /* timetable is a bonus — never fail the sync over it, but say so */
+      timetableNote = ` (timetable FAILED: ${e instanceof Error ? e.message : "unknown"})`;
+      console.error("[simplybook] timetable sync failed", e);
     }
   }
 
@@ -989,7 +1019,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
   }
 
   const activeNow = db.members.filter((m) => new Date(m.membershipExpires).getTime() > Date.now()).length;
-  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
+  const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings [${bookingSource}, ${bookingDays}d], ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
   db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
   saveDB();
   return {
