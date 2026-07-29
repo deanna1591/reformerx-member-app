@@ -230,5 +230,11 @@ export interface DB {
   promotions?: Promotion[];
   waitlist?: WaitlistEntry[];
   loginCodes?: LoginCode[];
-  settings: { leaderboardsEnabled: boolean; studioCode: string; lastSync?: string };
+  settings: {
+    leaderboardsEnabled: boolean;
+    studioCode: string;
+    lastSync?: string;
+    /** Marks the one-time challenge rule repair as done. */
+    challengeFixV1?: boolean;
+  };
 }
