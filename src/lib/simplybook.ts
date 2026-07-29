@@ -840,6 +840,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
               const existingClass = db.classes.find((c) => c.id === classId);
               const cap = (pid ? providerQty.get(String(pid)) : undefined) ?? capacityOf.get(String(svc.id));
               if (existingClass) {
+                existingClass.onTimetable = true;
                 existingClass.capacity = cap ?? existingClass.capacity;
                 existingClass.serviceId = String(svc.id);
                 if (pid) existingClass.unitId = String(pid);
@@ -854,6 +855,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
                   serviceId: String(svc.id),
                   unitId: pid ? String(pid) : undefined,
                   capacity: cap,
+                  onTimetable: true,
                 });
                 timetableNew++;
               }
@@ -878,6 +880,10 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
           const t = new Date(c.startsAt).getTime();
           if (t <= Date.now()) { why.past++; return true; }
           if (t > horizonMs) { why.beyondHorizon++; return true; }
+          // Inside the horizon the timetable is authoritative, so record whether
+          // it still offers this class. Outside it we have no coverage and must
+          // leave the flag alone.
+          c.onTimetable = seenClassIds.has(c.id);
           if (seenClassIds.has(c.id)) { why.onTimetable++; return true; }
           if (db.bookings.some((b) => b.classId === c.id)) { why.hasBooking++; return true; }
           // Never delete a class belonging to a service we didn't manage to

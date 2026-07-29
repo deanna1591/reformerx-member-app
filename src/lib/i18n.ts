@@ -97,6 +97,8 @@ const dict = {
     /* schedule */
     "schedule.title": "Schedule",
     "schedule.subtitleActive": "{pass} · book your spot",
+    "schedule.offTimetable": "No longer offered",
+    "schedule.offTimetableHelp": "The studio has removed this class from the timetable. Your booking is still held — contact the studio to confirm.",
     "schedule.subtitleInactive": "No active pass — grab one to reserve",
     "schedule.allClasses": "All classes",
     "schedule.allCoaches": "All coaches",
@@ -547,6 +549,8 @@ const dict = {
     /* schedule */
     "schedule.title": "Rozvrh",
     "schedule.subtitleActive": "{pass} · rezervuj si místo",
+    "schedule.offTimetable": "Již není v rozvrhu",
+    "schedule.offTimetableHelp": "Studio tuto lekci odstranilo z rozvrhu. Tvá rezervace stále platí — potvrď ji prosím ve studiu.",
     "schedule.subtitleInactive": "Žádná aktivní permanentka — pořiď si ji pro rezervace",
     "schedule.allClasses": "Všechny lekce",
     "schedule.allCoaches": "Všichni lektoři",

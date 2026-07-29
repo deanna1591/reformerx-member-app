@@ -150,7 +150,14 @@ export default async function ClassDetail({ params }: { params: { id: string } }
         )}
 
         {/* Primary actions */}
-        {!isPast && (
+        {!isPast && cls.onTimetable === false && (
+          <section className="rounded-xl2 border border-line bg-white p-4">
+            <p className="font-semibold">{t("schedule.offTimetable")}</p>
+            <p className="mt-1 text-[13px] text-smoke">{t("schedule.offTimetableHelp")}</p>
+          </section>
+        )}
+
+        {!isPast && cls.onTimetable !== false && (
           <section className="space-y-2">
             {booked ? (
               <>

@@ -38,7 +38,15 @@ export default async function SchedulePage({
   const type = searchParams.type ?? "all";
   const coach = searchParams.coach ?? "all";
 
-  const upcomingAll = db.classes.filter((c) => new Date(c.startsAt).getTime() > Date.now() - 30 * 60000);
+  // The timetable is the source of truth for what members can book. A class
+  // SimplyBook no longer offers stays visible only to whoever already booked it,
+  // so their reservation isn't silently orphaned.
+  const myClassIds = new Set(db.bookings.filter((b) => b.memberId === member.id).map((b) => b.classId));
+  const upcomingAll = db.classes.filter(
+    (c) =>
+      new Date(c.startsAt).getTime() > Date.now() - 30 * 60000 &&
+      (c.onTimetable !== false || myClassIds.has(c.id))
+  );
   const types = Array.from(new Set(upcomingAll.map((c) => c.title))).sort();
   const coaches = Array.from(
     new Set(upcomingAll.map((c) => db.instructors.find((i) => i.id === c.instructorId)?.name).filter(Boolean))
@@ -49,7 +57,7 @@ export default async function SchedulePage({
   if (coach !== "all") list = list.filter((c) => db.instructors.find((i) => i.id === c.instructorId)?.name === coach);
   list = list.sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
 
-  const myBookings = new Set(db.bookings.filter((b) => b.memberId === member.id).map((b) => b.classId));
+  const myBookings = myClassIds;
   // Which class the member already holds on each day — used to offer a move
   // instead of blocking, when their pass allows only one class per day.
   const bookedByDay = new Map<string, { id: string; title: string; startsAt: string }>();
@@ -148,7 +156,14 @@ export default async function SchedulePage({
                 </p>
               </div>
               </Link>
-              {booked ? (
+              {c.onTimetable === false ? (
+                <Link
+                  href={`/class/${encodeURIComponent(c.id)}`}
+                  className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-smoke"
+                >
+                  {t("schedule.offTimetable")}
+                </Link>
+              ) : booked ? (
                 <Link
                   href={`/class/${encodeURIComponent(c.id)}`}
                   className="rounded-full border border-sage-deep/40 bg-sage-soft px-3.5 py-2 text-[12px] font-semibold text-sage-deep"

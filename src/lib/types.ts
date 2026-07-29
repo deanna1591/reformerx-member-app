@@ -51,6 +51,13 @@ export interface StudioClass {
   unitId?: string; // SimplyBook performer id
   capacity?: number; // max bookings per class (SimplyBook limit_booking)
   spotsLeft?: number;
+  /**
+   * False when SimplyBook's timetable no longer offers this class but a member
+   * still holds a booking for it. Kept so the booking isn't orphaned, hidden
+   * from everyone else, and never bookable — SimplyBook would reject it.
+   * Undefined means unknown (outside the synced horizon, or seed data).
+   */
+  onTimetable?: boolean;
 }
 
 /** A pass/package the studio sells (synced from SimplyBook purchase history). */
