@@ -2,7 +2,7 @@ import { getDB, ensureDB } from "@/lib/store";
 import { getT } from "@/lib/i18n";
 import { createChallenge, toggleChallenge, deleteChallenge, addStarterChallenges } from "@/app/actions";
 import ConfirmButton from "@/components/ConfirmButton";
-import { fmtDate } from "@/lib/engine";
+import { fmtDate, challengeGoal } from "@/lib/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function AdminChallenges() {
                   <p className="text-[16px] font-semibold">{ch.emoji} {ch.name}</p>
                   <p className="mt-1 text-[13px] text-smoke">{ch.description}</p>
                   <p className="mt-2 text-[13px]">
-                    <span className="font-medium">Goal:</span> {ch.goal} · <span className="font-medium">Reward:</span> {ch.reward}
+                    <span className="font-medium">Goal:</span> {challengeGoal(ch)} · <span className="font-medium">Reward:</span> {ch.reward}
                     {ch.startDate && <> · {fmtDate(ch.startDate)} — {ch.endDate ? fmtDate(ch.endDate) : "open"}</>}
                     {ch.leaderboard && " · 🏆 leaderboard"}
                   </p>

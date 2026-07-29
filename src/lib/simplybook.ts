@@ -14,6 +14,7 @@
  */
 import { getDB, saveDBAsync } from "./store";
 import { BUILTIN_BADGE_DEFS } from "./badges";
+import { STUDIO_CHALLENGES } from "./challenges";
 import { awardBadgesForAll } from "./engine";
 import { studioToISO, isoToStudioString, studioDayKey, STUDIO_TZ } from "./time";
 const STUDIO_TZ_FOR_SYNC = STUDIO_TZ;
@@ -1120,6 +1121,11 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
   // scanned in, so most members were never assessed at all.
   for (const def of BUILTIN_BADGE_DEFS) {
     if (!db.badgeDefs.some((b) => b.id === def.id)) db.badgeDefs.push({ ...def });
+  }
+  // Seed any missing challenge as a draft. Never touch one that already exists —
+  // the owner's reward text and live/draft state must survive every sync.
+  for (const ch of STUDIO_CHALLENGES) {
+    if (!db.challenges.some((c) => c.id === ch.id)) db.challenges.push({ ...ch });
   }
   const badgesAwarded = awardBadgesForAll();
 

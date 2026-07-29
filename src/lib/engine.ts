@@ -99,7 +99,7 @@ export function recordAttendance(memberId: string, classId: string) {
     const ch = db.challenges.find((c) => c.id === cp.challengeId);
     if (!ch || !ch.active) continue;
     cp.progress = computeProgress(memberId, ch);
-    if (cp.progress >= ch.goal) {
+    if (cp.progress >= challengeGoal(ch)) {
       cp.completedAt = new Date().toISOString();
       completedChallenges.push(`${ch.emoji} ${ch.name}`);
       const emoji = ch.rewardEmoji ?? "🎁";
@@ -151,9 +151,23 @@ export function attendedClasses(memberId: string): Array<{ classId: string; at: 
   return Array.from(byClass.values()).sort((a, b) => +new Date(a.at) - +new Date(b.at));
 }
 
+/**
+ * Resolves a challenge's target. instructor_variety with goal 0 means "every
+ * instructor the studio currently has", so the goal tracks the roster instead
+ * of going stale whenever a coach joins or leaves.
+ */
+export function challengeGoal(ch: Challenge): number {
+  if (ch.type === "instructor_variety" && ch.goal <= 0) {
+    return Math.max(1, getDB().instructors.filter((i) => i.active !== false).length);
+  }
+  return ch.goal;
+}
+
 export function computeProgress(memberId: string, ch: Challenge): number {
   const db = getDB();
-  const mine = attendedClasses(memberId);
+  // Challenges count STUDIO CHECK-INS only — a booking is not a visit. Badges
+  // deliberately use the wider attendance source; these two must not converge.
+  const mine = attendedClasses(memberId).filter((a) => a.scanned);
 
   switch (ch.type) {
     case "class_count": {
@@ -162,6 +176,19 @@ export function computeProgress(memberId: string, ch: Challenge): number {
       return mine.filter((a) => {
         const t = new Date(a.at).getTime();
         return t >= s && t <= e;
+      }).length;
+    }
+    case "rolling_count": {
+      // Window runs from the moment they joined the challenge, so everyone gets
+      // the same fair shot regardless of when the studio launched it.
+      const jp = db.challengeProgress.find(
+        (p) => p.memberId === memberId && p.challengeId === ch.id
+      );
+      const from = jp ? new Date(jp.joinedAt).getTime() : -Infinity;
+      const to = jp ? from + (ch.windowDays ?? 30) * 86400000 : Infinity;
+      return mine.filter((a) => {
+        const t = new Date(a.at).getTime();
+        return t >= from && t <= to;
       }).length;
     }
     case "lifetime_count":
@@ -175,11 +202,10 @@ export function computeProgress(memberId: string, ch: Challenge): number {
     case "streak_days":
       return currentStreak(memberId);
     case "monthly_count": {
-      const now = new Date();
-      return mine.filter((a) => {
-        const d = new Date(a.at);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      }).length;
+      // Studio-local month: getMonth() on Vercel is UTC, so a late class on the
+      // 1st or the 31st could land in the wrong month.
+      const thisMonth = studioDayKey(new Date()).slice(0, 7);
+      return mine.filter((a) => studioDayKey(a.at).slice(0, 7) === thisMonth).length;
     }
     case "referrals":
       return db.members.filter(

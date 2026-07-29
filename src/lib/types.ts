@@ -124,12 +124,18 @@ export interface CheckIn {
   at: string; // ISO datetime
 }
 
+/**
+ * Challenge progress is counted from studio QR check-ins only — never from
+ * bookings. Badges use attendance; challenges require the member to physically
+ * scan in. Keep the two apart.
+ */
 export type ChallengeType =
-  | "class_count" // N classes within date range
+  | "class_count" // N classes within a fixed date range
+  | "rolling_count" // N classes within windowDays of joining the challenge
   | "streak_days" // N consecutive days with a class
-  | "instructor_variety" // one class with each of N instructors
+  | "instructor_variety" // one class with each instructor (goal 0 = all of them)
   | "lifetime_count" // N classes total, ever
-  | "monthly_count" // N classes in the current calendar month (resets monthly)
+  | "monthly_count" // N classes in the current calendar month (resets on the 1st)
   | "referrals"; // N friends who joined with your code and took their first class
 
 export interface Challenge {
@@ -141,6 +147,8 @@ export interface Challenge {
   goal: number;
   startDate?: string; // ISO date, class_count only
   endDate?: string;
+  /** rolling_count only: length of the window, measured from when they joined. */
+  windowDays?: number;
   reward: string;
   rewardEmoji?: string;
   springColor: "red" | "blue" | "yellow" | "green";

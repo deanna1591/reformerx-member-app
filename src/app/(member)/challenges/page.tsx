@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { computeProgress } from "@/lib/engine";
+import { computeProgress, challengeGoal } from "@/lib/engine";
 import CarriageProgress from "@/components/CarriageProgress";
 import { joinChallenge } from "@/app/actions";
 
@@ -38,16 +38,16 @@ export default async function ChallengesPage() {
                 <Link key={ch.id} href={`/challenges/${ch.id}`} className="block rounded-xl2 border border-line bg-white p-4 transition active:scale-[0.99]">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[15px] font-semibold">{ch.emoji} {ch.name}</p>
-                    <p className="text-[13px] font-semibold tabular-nums text-smoke">{value}/{ch.goal}</p>
+                    <p className="text-[13px] font-semibold tabular-nums text-smoke">{value}/{challengeGoal(ch)}</p>
                   </div>
                   <div className="mt-3">
-                    <CarriageProgress value={value} goal={ch.goal} color={ch.springColor} />
+                    <CarriageProgress value={value} goal={challengeGoal(ch)} color={ch.springColor} />
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-medium">
                       {ch.rewardEmoji ?? "🎁"} {ch.reward}
                     </span>
-                    <span className="text-[12px] font-semibold text-tan-deep">{Math.max(0, ch.goal - value)} to go</span>
+                    <span className="text-[12px] font-semibold text-tan-deep">{Math.max(0, challengeGoal(ch) - value)} to go</span>
                   </div>
                 </Link>
               );
