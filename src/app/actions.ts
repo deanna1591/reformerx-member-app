@@ -3,10 +3,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getDB, saveDB, saveDBAsync, ensureDB, resetDB } from "@/lib/store";
-import { performCheckIn, notify, notifyKey, CheckInResult, markBadgesCelebrated } from "@/lib/engine";
+import { getDB, saveDB, ensureDB, resetDB } from "@/lib/store";
+import { performCheckIn, notify, notifyKey, CheckInResult } from "@/lib/engine";
 import { currentMember } from "@/lib/auth";
-import { BUILTIN_BADGE_IDS } from "@/lib/badges";
 import { Member, Challenge } from "@/lib/types";
 
 /* ---------- auth ---------- */
@@ -63,7 +62,7 @@ export async function verifyLoginCode(formData: FormData) {
       member!.referredBy = referrer.id;
       notifyKey(referrer.id, "notif.referralJoined", { name: member!.name.split(" ")[0] });
       notifyKey(member!.id, "notif.referralWelcome", { name: referrer.name.split(" ")[0] });
-      await saveDBAsync();
+      saveDB();
       const { sendPush } = await import("@/lib/push");
       {
         const { translate } = await import("@/lib/i18n");
@@ -75,7 +74,7 @@ export async function verifyLoginCode(formData: FormData) {
       }
     } else if (referral && !referrer) {
       notifyKey(member!.id, "notif.referralNotFound", { code: referral });
-      await saveDBAsync();
+      saveDB();
     }
   }
 
@@ -93,7 +92,7 @@ export async function savePushSubscription(sub: unknown) {
     (s) => !(s.memberId === memberId && (s.sub as { endpoint?: string }).endpoint === endpoint)
   );
   db.pushSubs.push({ memberId, sub });
-  await saveDBAsync();
+  saveDB();
 }
 
 export async function memberLogout() {
@@ -152,7 +151,7 @@ export async function joinChallenge(challengeId: string) {
     });
     const ch = db.challenges.find((c) => c.id === challengeId);
     if (ch) notify(memberId, `You joined ${ch.emoji} ${ch.name}. Good luck!`);
-    await saveDBAsync();
+    saveDB();
   }
   revalidatePath("/challenges");
 }
@@ -165,7 +164,7 @@ export async function markNotificationsRead() {
   db.notifications.forEach((n) => {
     if (n.memberId === memberId) n.read = true;
   });
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/");
 }
 
@@ -196,7 +195,7 @@ export async function createChallenge(formData: FormData) {
   db.challenges.unshift(ch);
   // announce to all members
   db.members.forEach((m) => notify(m.id, `New challenge at the studio: ${ch.emoji} ${ch.name} — reward: ${ch.reward}`));
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/challenges");
   revalidatePath("/challenges");
 }
@@ -207,7 +206,7 @@ export async function toggleChallenge(challengeId: string) {
   const db = getDB();
   const ch = db.challenges.find((c) => c.id === challengeId);
   if (ch) ch.active = !ch.active;
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/challenges");
 }
 
@@ -221,15 +220,14 @@ export async function setRewardStatus(rewardId: string, status: "ready" | "colle
   er.decidedAt = new Date().toISOString();
   const label = `${er.rewardEmoji} ${er.reward}`;
   if (status === "ready") {
-    notifyKey(er.memberId, "notif.rewardReady", { reward: label });
+    notify(er.memberId, `🎁 Your reward is ready: ${label}. Pick it up at reception on your next visit.`);
     const { sendPush } = await import("@/lib/push");
-    const { memberLocale } = await import("@/lib/engine");
-    const { translate } = await import("@/lib/i18n");
-    void sendPush(er.memberId, translate(memberLocale(er.memberId), "notif.rewardReady", { reward: er.reward }), "/rewards");
+    void sendPush(er.memberId, `🎁 ${er.reward} is ready at reception!`, "/rewards");
   }
-  if (status === "collected") notifyKey(er.memberId, "notif.rewardCollected", { reward: er.reward, challenge: er.challengeName });
-  if (status === "declined") notifyKey(er.memberId, "notif.rewardDeclined", { challenge: er.challengeName });
-  await saveDBAsync();
+  if (status === "collected") notify(er.memberId, `Enjoy your ${er.reward}! Thanks for crushing ${er.challengeName}.`);
+  if (status === "declined")
+    notify(er.memberId, `About your ${er.challengeName} reward — please ask at reception for details.`);
+  saveDB();
   revalidatePath("/admin/redemptions");
   revalidatePath("/rewards");
 }
@@ -244,7 +242,7 @@ export async function updateMembership(memberId: string, formData: FormData) {
   const expires = String(formData.get("expires") ?? "");
   m.membershipType = type as typeof m.membershipType;
   if (expires) m.membershipExpires = new Date(`${expires}T23:59:59`).toISOString();
-  await saveDBAsync();
+  saveDB();
   revalidatePath(`/admin/members/${memberId}`);
   revalidatePath("/admin/members");
 }
@@ -258,7 +256,7 @@ export async function extendMembership(memberId: string, days: number) {
   const base = Math.max(Date.now(), new Date(m.membershipExpires).getTime());
   m.membershipExpires = new Date(base + days * 86400000).toISOString();
   notifyKey(memberId, "notif.membershipExtended", { date: new Date(m.membershipExpires).toLocaleDateString("en-GB") });
-  await saveDBAsync();
+  saveDB();
   revalidatePath(`/admin/members/${memberId}`);
   revalidatePath("/admin/members");
 }
@@ -269,7 +267,7 @@ export async function sendMemberMessage(memberId: string, formData: FormData) {
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return;
   notifyKey(memberId, "notif.staffMessage", { text });
-  await saveDBAsync();
+  saveDB();
   const { sendPush } = await import("@/lib/push");
   void sendPush(memberId, text);
   revalidatePath(`/admin/members/${memberId}`);
@@ -290,7 +288,7 @@ export async function adminCheckIn(memberId: string, formData: FormData) {
     const { sendPush } = await import("@/lib/push");
     void sendPush(memberId, `🎉 ${res.completedChallenges[0]} complete!`, "/rewards");
   }
-  await saveDBAsync();
+  saveDB();
   revalidatePath(`/admin/members/${memberId}`);
   revalidatePath("/admin/members");
 }
@@ -302,7 +300,7 @@ export async function sendAnnouncement(formData: FormData) {
   if (!text) return;
   const db = getDB();
   db.members.forEach((m) => notify(m.id, `📣 ${text}`));
-  await saveDBAsync();
+  saveDB();
   const { sendPushToAll } = await import("@/lib/push");
   void sendPushToAll(`📣 ${text}`);
   revalidatePath("/admin");
@@ -313,7 +311,7 @@ export async function toggleLeaderboards() {
   requireAdmin();
   const db = getDB();
   db.settings.leaderboardsEnabled = !db.settings.leaderboardsEnabled;
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/settings");
 }
 
@@ -329,11 +327,11 @@ export async function simulateSimplybookSync() {
       const result = await syncFromSimplybook();
       console.log("[sync]", result.message);
       getDB().settings.lastSync = `${new Date().toISOString()}|${result.ok ? "ok" : "err"}|${result.message}`;
-      await saveDBAsync();
+      saveDB();
     } catch (e) {
       console.error("[sync] threw:", e);
       db.settings.lastSync = `${new Date().toISOString()}|err|${e instanceof Error ? e.message : "Sync failed"}`;
-      await saveDBAsync();
+      saveDB();
     }
   } else {
     // Demo mode: refresh expirations so the demo stays usable.
@@ -347,7 +345,7 @@ export async function simulateSimplybookSync() {
       }
     });
     db.settings.lastSync = `${new Date().toISOString()}|demo|Demo mode — set SIMPLYBOOK_COMPANY, SIMPLYBOOK_LOGIN and SIMPLYBOOK_USER_KEY in .env.local to sync real data.`;
-    await saveDBAsync();
+    saveDB();
   }
   revalidatePath("/admin/members");
 }
@@ -360,17 +358,6 @@ export async function resetDemoData() {
 }
 
 /* ---------- admin member management ---------- */
-
-
-/** Every screen that shows a member's bookings. Revalidating one and not the
- *  others is what made home and schedule disagree after a reschedule. */
-function revalidateMemberViews(...classIds: Array<string | undefined>) {
-  revalidatePath("/");
-  revalidatePath("/schedule");
-  revalidatePath("/profile");
-  revalidatePath("/milestones");
-  for (const id of classIds) if (id) revalidatePath(`/class/${id}`);
-}
 
 /* ---------- member booking ---------- */
 
@@ -402,7 +389,7 @@ export async function reserveClass(formData: FormData) {
         : "notif.noPass",
       { title: cls.title }
     );
-    await saveDBAsync();
+    saveDB();
     revalidatePath("/schedule");
     return;
   }
@@ -410,7 +397,7 @@ export async function reserveClass(formData: FormData) {
   const { createSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
   if (!inAppBookingEnabled() || !cls.serviceId || !member.simplybookId) {
     notifyKey(member.id, "notif.bookExternally");
-    await saveDBAsync();
+    saveDB();
     return;
   }
 
@@ -434,8 +421,9 @@ export async function reserveClass(formData: FormData) {
   } else {
     notifyKey(member.id, "notif.bookingFailed", { title: cls.title, reason: res.message });
   }
-  await saveDBAsync();
-  revalidateMemberViews(classId);
+  saveDB();
+  revalidatePath("/schedule");
+  revalidatePath("/");
 }
 
 export async function cancelReservation(formData: FormData) {
@@ -447,37 +435,20 @@ export async function cancelReservation(formData: FormData) {
   const booking = db.bookings.find((b) => b.memberId === member.id && b.classId === classId);
   if (!booking) return;
 
-  // Bookings imported from SimplyBook carry their id in the field, and older
-  // rows encode it in the app id (b-sb-1234) — use either.
-  const cls = db.classes.find((c) => c.id === classId);
-  const sbBookingId =
-    booking.simplybookBookingId ?? (booking.id.startsWith("b-sb-") ? booking.id.slice(5) : undefined);
-
-  if (sbBookingId) {
-    const { cancelSimplybookBooking, inAppBookingEnabled } = await import("@/lib/simplybook");
-    if (inAppBookingEnabled()) {
-      const res = await cancelSimplybookBooking(sbBookingId);
-      if (!res.ok) {
-        // Never remove it locally if SimplyBook still holds the booking — the
-        // member would think they had cancelled when they hadn't.
-        notifyKey(member.id, "notif.cancelFailed", { reason: res.message });
-        await saveDBAsync();
-        revalidatePath(`/class/${classId}`);
-        return;
-      }
-    } else {
-      notifyKey(member.id, "notif.cancelExternally", { title: cls?.title ?? "class" });
-      await saveDBAsync();
-      revalidatePath(`/class/${classId}`);
+  if (booking.simplybookBookingId) {
+    const { cancelSimplybookBooking } = await import("@/lib/simplybook");
+    const res = await cancelSimplybookBooking(booking.simplybookBookingId);
+    if (!res.ok) {
+      notifyKey(member.id, "notif.cancelFailed", { reason: res.message });
+      saveDB();
       return;
     }
   }
   db.bookings = db.bookings.filter((b) => b !== booking);
+  const cls = db.classes.find((c) => c.id === classId);
   if (cls && typeof cls.spotsLeft === "number") cls.spotsLeft += 1;
   notifyKey(member.id, "notif.cancelled", { title: cls?.title ?? "class" });
-  await saveDBAsync();
-
-  revalidateMemberViews(classId);
+  saveDB();
 
   // Hand the freed spot to the next person waiting
   const { offerNextSpot } = await import("@/lib/engine");
@@ -514,7 +485,7 @@ export async function rescheduleClass(formData: FormData) {
   const moveCheck = canMove(member.id, toId, fromId);
   if (!moveCheck.ok && moveCheck.reason === "daily_limit") {
     notifyKey(member.id, "notif.dailyLimit", { title: target.title });
-    await saveDBAsync();
+    saveDB();
     return;
   }
 
@@ -531,21 +502,21 @@ export async function rescheduleClass(formData: FormData) {
     });
     if (!created.ok) {
       notify(member.id, `Could not move: ${created.message}`);
-      await saveDBAsync();
+      saveDB();
       return;
     }
-    const oldSbId =
-      booking.simplybookBookingId ?? (booking.id.startsWith("b-sb-") ? booking.id.slice(5) : undefined);
-    if (oldSbId) await cancelSimplybookBooking(oldSbId);
+    if (booking.simplybookBookingId) await cancelSimplybookBooking(booking.simplybookBookingId);
     booking.simplybookBookingId = created.id;
   }
 
   booking.classId = toId;
   booking.bookedAt = new Date().toISOString();
   notifyKey(member.id, "notif.moved", { title: target.title, when: new Date(target.startsAt).toLocaleString() });
-  await saveDBAsync();
-  revalidateMemberViews(fromId, toId);
-  redirect(`/class/${encodeURIComponent(toId)}`);
+  saveDB();
+  revalidatePath("/schedule");
+  revalidatePath(`/class/${toId}`);
+  revalidatePath("/");
+  redirect(`/class/${toId}`);
 }
 
 /* ---------- instructors & staff ---------- */
@@ -607,7 +578,7 @@ export async function saveInstructor(formData: FormData) {
       active,
     });
   }
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/instructors");
   revalidatePath("/schedule");
   redirect("/admin/instructors?saved=1");
@@ -620,7 +591,7 @@ export async function removeInstructorPhoto(formData: FormData) {
   const inst = db.instructors.find((i) => i.id === String(formData.get("id")));
   if (inst) {
     inst.photoUrl = undefined;
-    await saveDBAsync();
+    saveDB();
   }
   revalidatePath("/admin/instructors");
 }
@@ -701,7 +672,7 @@ export async function savePromotion(formData: FormData) {
       ...fields,
     });
   }
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/promotions");
   revalidatePath("/");
   redirect("/admin/promotions?saved=1");
@@ -712,7 +683,7 @@ export async function deletePromotion(formData: FormData) {
   requireOwner();
   const db = getDB();
   db.promotions = (db.promotions ?? []).filter((p) => p.id !== String(formData.get("id")));
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/promotions");
   revalidatePath("/");
 }
@@ -727,7 +698,7 @@ export async function movePromotion(formData: FormData) {
     db.promotions = (db.promotions ?? [])
       .sort((a, b) => a.order - b.order)
       .map((p, i) => ({ ...p, order: i }));
-    await saveDBAsync();
+    saveDB();
   }
   revalidatePath("/admin/promotions");
   revalidatePath("/");
@@ -757,7 +728,7 @@ export async function joinWaitlist(formData: FormData) {
     status: "waiting",
   });
   notifyKey(member.id, "notif.waitJoined", { title: cls.title });
-  await saveDBAsync();
+  saveDB();
   revalidatePath(`/class/${classId}`);
   revalidatePath("/schedule");
   revalidatePath("/");
@@ -775,7 +746,7 @@ export async function leaveWaitlist(formData: FormData) {
   if (!entry) return;
   const wasOffered = entry.status === "offered";
   db.waitlist = (db.waitlist ?? []).filter((w) => w.id !== entry.id);
-  await saveDBAsync();
+  saveDB();
   if (wasOffered) {
     const { offerNextSpot } = await import("@/lib/engine");
     offerNextSpot(classId); // pass the spot straight on
@@ -800,7 +771,7 @@ export async function confirmWaitlistOffer(formData: FormData) {
   if (entry.offerExpiresAt && new Date(entry.offerExpiresAt).getTime() < Date.now()) {
     entry.status = "expired";
     notifyKey(member.id, "notif.waitExpired", { title: cls.title });
-    await saveDBAsync();
+    saveDB();
     const { offerNextSpot } = await import("@/lib/engine");
     offerNextSpot(classId);
     revalidatePath(`/class/${classId}`);
@@ -811,7 +782,7 @@ export async function confirmWaitlistOffer(formData: FormData) {
   const claim = canBook(member.id, classId);
   if (!claim.ok) {
     notifyKey(member.id, claim.reason === "daily_limit" ? "notif.dailyLimit" : "notif.noCredits", { title: cls.title });
-    await saveDBAsync();
+    saveDB();
     revalidatePath(`/class/${classId}`);
     return;
   }
@@ -827,7 +798,7 @@ export async function confirmWaitlistOffer(formData: FormData) {
     });
     if (!res.ok) {
       notifyKey(member.id, "notif.waitClaimFailed", { reason: res.message });
-      await saveDBAsync();
+      saveDB();
       revalidatePath(`/class/${classId}`);
       return;
     }
@@ -852,7 +823,7 @@ export async function confirmWaitlistOffer(formData: FormData) {
   entry.status = "confirmed";
   if (typeof cls.spotsLeft === "number") cls.spotsLeft = Math.max(0, cls.spotsLeft - 1);
   notifyKey(member.id, "notif.waitConfirmed", { title: cls.title });
-  await saveDBAsync();
+  saveDB();
   revalidatePath(`/class/${classId}`);
   revalidatePath("/schedule");
   revalidatePath("/");
@@ -870,7 +841,7 @@ export async function declineWaitlistOffer(formData: FormData) {
   );
   if (!entry) return;
   entry.status = "declined";
-  await saveDBAsync();
+  saveDB();
   const { offerNextSpot } = await import("@/lib/engine");
   offerNextSpot(classId);
   revalidatePath(`/class/${classId}`);
@@ -889,7 +860,7 @@ export async function setLanguage(formData: FormData) {
     const m = getDB().members.find((x) => x.id === member.id);
     if (m) {
       m.locale = value;
-      await saveDBAsync();
+      saveDB();
     }
   }
   revalidatePath("/", "layout");
@@ -921,7 +892,7 @@ export async function cleanDemoData() {
   db.notifications = db.notifications.filter((n) => !ids.has(n.memberId));
   db.waitlist = (db.waitlist ?? []).filter((w) => !ids.has(w.memberId));
   db.classes = db.classes.filter((c) => !c.id.startsWith("c-demo-"));
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/health");
   revalidatePath("/admin/members");
 }
@@ -956,12 +927,12 @@ export async function deleteChallenge(formData: FormData) {
   if (joined > 0) {
     const ch = db.challenges.find((c) => c.id === id);
     if (ch) ch.active = false;
-    await saveDBAsync();
+    saveDB();
     revalidatePath("/admin/challenges");
     return;
   }
   db.challenges = db.challenges.filter((c) => c.id !== id);
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/challenges");
   revalidatePath("/challenges");
 }
@@ -1061,60 +1032,7 @@ export async function addStarterChallenges() {
     });
     added++;
   }
-  await saveDBAsync();
+  saveDB();
   revalidatePath("/admin/challenges");
   redirect(`/admin/challenges?added=${added}`);
-}
-
-
-/** Called by the home-screen celebration once the member has seen their badges. */
-export async function dismissBadgeCelebration(): Promise<void> {
-  const member = await currentMember();
-  if (!member) return;
-  await ensureDB();
-  markBadgesCelebrated(member.id);
-  await saveDBAsync();
-  revalidatePath("/");
-}
-
-
-/** Owner-created badge. Awards automatically once a member hits the class count. */
-export async function saveBadge(fd: FormData): Promise<void> {
-  const { isOwner } = require("@/lib/staff") as typeof import("@/lib/staff");
-  if (!isOwner()) return;
-  await ensureDB();
-  const db = getDB();
-  const name = String(fd.get("name") ?? "").trim().slice(0, 40);
-  const description = String(fd.get("description") ?? "").trim().slice(0, 120);
-  const classesRequired = Math.max(1, Math.min(2000, parseInt(String(fd.get("classesRequired") ?? "0"), 10) || 0));
-  const imageUrl = String(fd.get("imageUrl") ?? "");
-  if (!name || !classesRequired) return;
-  // 100 KB cap enforced in the browser too; re-checked here because a form post
-  // can be crafted by hand and a huge data URL would bloat every DB read.
-  const safeImage = imageUrl.startsWith("data:image/") && imageUrl.length < 140_000 ? imageUrl : undefined;
-
-  db.badgeDefs.push({
-    id: `bd-custom-${Date.now().toString(36)}`,
-    name,
-    description,
-    emoji: safeImage ? "🏆" : "🏆",
-    imageUrl: safeImage,
-    classesRequired,
-    custom: true,
-  });
-  await saveDBAsync();
-  revalidatePath("/admin/badges");
-}
-
-export async function deleteBadge(fd: FormData): Promise<void> {
-  const { isOwner } = require("@/lib/staff") as typeof import("@/lib/staff");
-  if (!isOwner()) return;
-  await ensureDB();
-  const db = getDB();
-  const badgeId = String(fd.get("badgeId") ?? "");
-  if (!badgeId || BUILTIN_BADGE_IDS.has(badgeId)) return; // built-ins are code, not data
-  db.badgeDefs = db.badgeDefs.filter((b) => b.id !== badgeId);
-  db.earnedBadges = db.earnedBadges.filter((b) => b.badgeId !== badgeId);
-  await saveDBAsync();
-  revalidatePath("/admin/badges");
 }
