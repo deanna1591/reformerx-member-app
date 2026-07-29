@@ -29,7 +29,11 @@ export default async function SchedulePage({
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 7 }, (_, i) => {
+  // A month of dates so members can book well ahead. The strip already scrolls
+  // horizontally; this just gives it more to scroll through. 30 keeps it inside
+  // the 21-day timetable horizon plus a little room for classes synced further out.
+  const DAY_STRIP_DAYS = 30;
+  const days = Array.from({ length: DAY_STRIP_DAYS }, (_, i) => {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
     return d;

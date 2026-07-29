@@ -148,6 +148,16 @@ export default async function AdminMembers({
             ))}
           </select>
           <button className="rounded-xl border border-line bg-white px-3 py-2 text-[13px] font-semibold">{t("adm.filter")}</button>
+          <a
+            href={`/api/admin/members-export?${new URLSearchParams({
+              ...(q ? { q } : {}),
+              ...(status !== "all" ? { status: String(status) } : {}),
+              ...(type !== "all" ? { type } : {}),
+            }).toString()}`}
+            className="rounded-xl bg-ink px-3 py-2 text-[13px] font-semibold text-white"
+          >
+            {t("adm.exportCsv", { n: list.length })}
+          </a>
         </form>
       </div>
 
