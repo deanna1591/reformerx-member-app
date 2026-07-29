@@ -325,6 +325,8 @@ export interface SyncResult {
   members?: number;
   memberships?: number;
   bookings?: number;
+  /** Why the timetable prune kept or removed each class. Diagnostic only. */
+  pruneStats?: Record<string, unknown> | null;
 }
 
 /**
@@ -725,6 +727,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
      fabricated classes that don't exist. We also prune future classes that the
      timetable no longer contains, so cancelled or rescheduled sessions vanish
      from the app instead of lingering. */
+  let pruneStats: Record<string, unknown> | null = null;
   let timetableSlots = 0; // slots SimplyBook listed this run
   let timetableNew = 0;   // of those, ones we hadn't seen before
   let timetableNote = "";
@@ -860,18 +863,29 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
       // booked into them (those stay so the member's booking isn't orphaned).
       if (timetableOk && seenClassIds.size > 0) {
         const horizonMs = Date.now() + horizonDays * 86400000;
+        // Count why each row survives, so a prune that quietly does nothing
+        // can be diagnosed from the sync response instead of by guesswork.
+        const why = { past: 0, beyondHorizon: 0, onTimetable: 0, hasBooking: 0, serviceNotCovered: 0, removed: 0 };
         const keep = db.classes.filter((c) => {
           const t = new Date(c.startsAt).getTime();
-          if (t <= Date.now() || t > horizonMs) return true; // past or beyond horizon
-          if (seenClassIds.has(c.id)) return true; // still on the timetable
-          if (db.bookings.some((b) => b.classId === c.id)) return true; // someone is booked
+          if (t <= Date.now()) { why.past++; return true; }
+          if (t > horizonMs) { why.beyondHorizon++; return true; }
+          if (seenClassIds.has(c.id)) { why.onTimetable++; return true; }
+          if (db.bookings.some((b) => b.classId === c.id)) { why.hasBooking++; return true; }
           // Never delete a class belonging to a service we didn't manage to
           // query this run — silence isn't evidence of removal.
-          if (!c.serviceId || !coveredServiceIds.has(String(c.serviceId))) return true;
+          if (!c.serviceId || !coveredServiceIds.has(String(c.serviceId))) { why.serviceNotCovered++; return true; }
+          why.removed++;
           return false;
         });
         prunedClasses = db.classes.length - keep.length;
         db.classes = keep;
+        pruneStats = {
+          ...why,
+          seenClassIds: seenClassIds.size,
+          coveredServices: Array.from(coveredServiceIds).sort().join(","),
+          horizonDays,
+        };
       }
     } catch (e) {
       /* timetable is a bonus — never fail the sync over it, but say so */
@@ -1083,6 +1097,7 @@ export async function syncFromSimplybook(opts: { quick?: boolean } = {}): Promis
     members: clients.length,
     memberships: membershipRows,
     bookings: bookingRows,
+    pruneStats,
   };
 }
 

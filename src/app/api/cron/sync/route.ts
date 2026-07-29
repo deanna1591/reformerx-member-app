@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
       ok: result.ok,
       // Surfaced so a failed write can't masquerade as a successful sync again.
       persisted: save,
+      pruneStats: result.pruneStats ?? null,
       message: result.message,
       mode: quick ? "quick" : "full",
       newMembers: db.members.length - before,
