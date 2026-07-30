@@ -2,7 +2,7 @@ import { getT } from "@/lib/i18n";
 import { ensureDB, getDB } from "@/lib/store";
 import { membershipActive } from "@/lib/engine";
 import { emailConfigured, DAILY_LIMIT, MAX_PER_SEND } from "@/lib/email";
-import { studioDayKey } from "@/lib/time";
+import { studioDayKeySafe } from "@/lib/time";
 import { sendStudioEmail } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +34,8 @@ export default async function AdminEmail({
   // The provider's daily cap is the real constraint, so show exactly what is
   // left today rather than a theoretical per-send maximum.
   const log = db.emailLog ?? [];
-  const today = studioDayKey(new Date());
-  const sentToday = log.filter((e) => studioDayKey(e.sentAt) === today).length;
+  const today = studioDayKeySafe(new Date());
+  const sentToday = log.filter((e) => studioDayKeySafe(e.sentAt) === today).length;
   const leftToday = Math.max(0, DAILY_LIMIT - sentToday);
   // What this next send can actually cover.
   const perSend = Math.min(leftToday, MAX_PER_SEND);

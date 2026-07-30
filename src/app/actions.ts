@@ -1170,7 +1170,7 @@ export async function sendStudioEmail(formData: FormData) {
 
   const { membershipActive } = await import("@/lib/engine");
   const { sendEmailBatch, studioMessageEmail, emailConfigured, DAILY_LIMIT, MAX_PER_SEND } = await import("@/lib/email");
-  const { studioDayKey } = await import("@/lib/time");
+  const { studioDayKeySafe } = await import("@/lib/time");
   if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
 
   // Flyer or photo. Storage, not inline — most clients strip data: URLs.
@@ -1212,8 +1212,8 @@ export async function sendStudioEmail(formData: FormData) {
   }
 
   // The provider's daily cap, not the function timeout, is what limits a send.
-  const today = studioDayKey(new Date());
-  const sentToday = db.emailLog.filter((e) => studioDayKey(e.sentAt) === today).length;
+  const today = studioDayKeySafe(new Date());
+  const sentToday = db.emailLog.filter((e) => studioDayKeySafe(e.sentAt) === today).length;
   const allowance = Math.max(0, DAILY_LIMIT - sentToday);
   if (allowance === 0) {
     redirect(`/admin/email?error=quota&remaining=${outstanding.length}`);

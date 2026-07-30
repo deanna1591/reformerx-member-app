@@ -50,6 +50,19 @@ function parseCsv(text) {
   return rows.filter((r) => r.length > 1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
 }
 
+/**
+ * Resend writes "2026-07-30 09:10:06.49+00" — a space instead of T, and a
+ * two-digit offset. Date() rejects both, and an Invalid Date stored in the log
+ * made Intl throw and took the admin page down. Normalise, then verify.
+ */
+function toIso(raw) {
+  const fallback = new Date().toISOString();
+  if (!raw) return fallback;
+  const candidate = String(raw).trim().replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
+  const d = new Date(candidate);
+  return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
+}
+
 const all = parseCsv(fs.readFileSync(csvPath, "utf8"));
 const rows = all.filter((r) => r.subject === subject);
 if (rows.length === 0) {
@@ -83,7 +96,7 @@ for (const r of rows) {
   if (!m) { unmatched.push(email); continue; }
   if (alreadyLogged.has(m.id)) continue;
   alreadyLogged.add(m.id);
-  additions.push({ subject, memberId: m.id, sentAt: (r.sent_at || r.created_at || new Date().toISOString()).replace(" ", "T") });
+  additions.push({ subject, memberId: m.id, sentAt: toIso(r.sent_at || r.created_at) });
 }
 
 console.log(`\n  ${additions.length} to add to the log`);

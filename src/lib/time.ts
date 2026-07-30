@@ -89,3 +89,23 @@ export function studioLongDate(d: Date | string): string {
     month: "long",
   }).format(new Date(d));
 }
+
+/**
+ * studioDayKey, but null instead of a thrown RangeError when the value isn't a
+ * real date.
+ *
+ * Intl.DateTimeFormat throws on an Invalid Date, so a single malformed timestamp
+ * in a collection was enough to 500 an entire admin page. Anything reading dates
+ * out of stored data should use this; studioDayKey stays strict for values we
+ * generate ourselves, where a bad date is a bug worth surfacing.
+ */
+export function studioDayKeySafe(at: string | Date | undefined | null): string | null {
+  if (!at) return null;
+  const d = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    return studioDayKey(d);
+  } catch {
+    return null;
+  }
+}
