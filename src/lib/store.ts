@@ -171,6 +171,7 @@ function seed(): DB {
       { memberId: "m-you", challengeId: "ch-summer", joinedAt: iso(summerStart), progress: 0 },
     ],
     badgeDefs: BUILTIN_BADGE_DEFS.slice(),
+    emailLog: [],
     earnedBadges: [
       { memberId: "m-you", badgeId: "bd-first", earnedAt: iso(daysFromNow(-259)) },
       { memberId: "m-you", badgeId: "bd-10", earnedAt: iso(daysFromNow(-120)) },
@@ -250,6 +251,8 @@ const COLLECTIONS = [
   // cold start.
   "badgeDefs",
   "earnedBadges",
+  // who has received which email campaign, so a split send never repeats anyone
+  "emailLog",
   "earnedRewards",
   "notifications",
   "packages",

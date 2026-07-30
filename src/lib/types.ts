@@ -193,6 +193,19 @@ export interface BadgeDef {
   custom?: boolean;
 }
 
+/**
+ * One record per member per email campaign.
+ *
+ * Exists so a campaign split across several days doesn't email the same person
+ * twice. Keyed by subject: sending again with the same subject continues the
+ * campaign rather than restarting it.
+ */
+export interface EmailLogEntry {
+  subject: string;
+  memberId: string;
+  sentAt: string;
+}
+
 export interface EarnedBadge {
   memberId: string;
   badgeId: string;
@@ -238,6 +251,7 @@ export interface DB {
   challengeProgress: ChallengeProgress[];
   badgeDefs: BadgeDef[];
   earnedBadges: EarnedBadge[];
+  emailLog: EmailLogEntry[];
   earnedRewards: EarnedReward[];
   notifications: AppNotification[];
   pushSubs: { memberId: string; sub: unknown }[];

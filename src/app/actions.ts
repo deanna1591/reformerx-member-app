@@ -1165,11 +1165,15 @@ export async function sendStudioEmail(formData: FormData) {
   const memberId = String(formData.get("memberId") ?? "");
   const ctaLabel = String(formData.get("ctaLabel") ?? "").trim().slice(0, 40);
   const ctaUrl = String(formData.get("ctaUrl") ?? "").trim().slice(0, 300);
-  const part = Math.max(1, Number(formData.get("part") ?? 1) || 1);
 
-  // Flyer or photo. Goes to Supabase Storage and rides in the email as an
-  // absolute URL — most clients (Gmail especially) strip data: URLs entirely,
-  // so an inline base64 image would simply not appear.
+  if (!subject || !body) redirect("/admin/email?error=missing");
+
+  const { membershipActive } = await import("@/lib/engine");
+  const { sendEmailBatch, studioMessageEmail, emailConfigured, DAILY_LIMIT } = await import("@/lib/email");
+  const { studioDayKey } = await import("@/lib/time");
+  if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
+
+  // Flyer or photo. Storage, not inline — most clients strip data: URLs.
   let imageUrl = String(formData.get("imageUrl") ?? "").trim().slice(0, 500);
   const imageFile = formData.get("image");
   if (imageFile && typeof imageFile === "object" && "size" in imageFile && (imageFile as File).size > 0) {
@@ -1178,14 +1182,7 @@ export async function sendStudioEmail(formData: FormData) {
       imageUrl = (await uploadFormImage(imageFile, "email")) ?? imageUrl;
     }
   }
-  // A data: URL would be dropped by the mail client, so don't send one.
   if (imageUrl.startsWith("data:")) imageUrl = "";
-
-  if (!subject || !body) redirect("/admin/email?error=missing");
-
-  const { membershipActive } = await import("@/lib/engine");
-  const { sendEmailBatch, studioMessageEmail, emailConfigured, MAX_PER_SEND } = await import("@/lib/email");
-  if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
 
   let pool =
     audience === "one"
@@ -1196,20 +1193,33 @@ export async function sendStudioEmail(formData: FormData) {
           ? db.members.filter((m) => !membershipActive(m))
           : db.members.slice();
 
-  // No usable address, nothing to send to. The placeholders the dev seeder
-  // writes must never receive anything either.
   pool = pool
     .filter((m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid"))
-    .sort((a, b) => a.name.localeCompare(b.name)); // stable order, so parts don't overlap
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (pool.length === 0) redirect("/admin/email?error=norecipients");
 
-  // One send covers at most MAX_PER_SEND. A bigger audience is split into parts
-  // the admin picks explicitly, rather than the function cap deciding silently
-  // who got an email and who didn't.
-  const parts = Math.max(1, Math.ceil(pool.length / MAX_PER_SEND));
-  if (part > parts) redirect("/admin/email?error=badpart");
-  const recipients = pool.slice((part - 1) * MAX_PER_SEND, part * MAX_PER_SEND);
+  // Continue rather than restart: anyone already sent this subject is skipped, so
+  // a campaign spread over several days never reaches the same person twice.
+  db.emailLog = db.emailLog ?? [];
+  const already = new Set(
+    db.emailLog.filter((e) => e.subject === subject).map((e) => e.memberId)
+  );
+  const outstanding = pool.filter((m) => !already.has(m.id));
+
+  if (outstanding.length === 0) {
+    redirect(`/admin/email?done=${encodeURIComponent(subject)}&skipped=${already.size}`);
+  }
+
+  // The provider's daily cap, not the function timeout, is what limits a send.
+  const today = studioDayKey(new Date());
+  const sentToday = db.emailLog.filter((e) => studioDayKey(e.sentAt) === today).length;
+  const allowance = Math.max(0, DAILY_LIMIT - sentToday);
+  if (allowance === 0) {
+    redirect(`/admin/email?error=quota&remaining=${outstanding.length}`);
+  }
+
+  const recipients = outstanding.slice(0, allowance);
 
   const messages = recipients.map((m) => {
     const msg = studioMessageEmail({
@@ -1225,20 +1235,30 @@ export async function sendStudioEmail(formData: FormData) {
 
   const { sent, failed, errors } = await sendEmailBatch(messages);
 
-  // Mirror it in-app so a member who missed the email still sees it.
-  if (audience !== "one") {
-    for (const m of recipients) notify(m.id, subject);
-    await saveDBAsync();
+  // Log only what actually went out. sendEmailBatch reports per-chunk, so on a
+  // partial failure this records the first `sent` recipients — imprecise, but it
+  // errs towards re-sending rather than silently skipping someone.
+  const now = new Date().toISOString();
+  for (const m of recipients.slice(0, sent)) {
+    db.emailLog.push({ subject, memberId: m.id, sentAt: now });
   }
+  // Keep the log from growing without bound; a year is plenty of history.
+  const cutoff = Date.now() - 365 * 86400000;
+  db.emailLog = db.emailLog.filter((e) => new Date(e.sentAt).getTime() >= cutoff);
 
+  if (audience !== "one") for (const m of recipients.slice(0, sent)) notify(m.id, subject);
+  await saveDBAsync();
+
+  const remaining = outstanding.length - sent;
   const q = new URLSearchParams({ sent: String(sent) });
   if (failed) q.set("failed", String(failed));
-  if (parts > 1) q.set("part", `${part}/${parts}`);
+  if (already.size) q.set("skipped", String(already.size));
+  if (remaining > 0) q.set("remaining", String(remaining));
   if (errors.length) q.set("apierror", errors[0].slice(0, 160));
+  q.set("subject", subject);
   revalidatePath("/admin/email");
   redirect(`/admin/email?${q.toString()}`);
 }
-
 
 /**
  * Edit an existing challenge.

@@ -81,6 +81,16 @@ export const BATCH_SIZE = 100;
  */
 export const MAX_PER_SEND = 1000;
 
+/**
+ * Emails the provider will accept in a day.
+ *
+ * Resend's free tier is 100/day. MAX_PER_SEND above only ever described what
+ * fits inside Vercel's function timeout — it said 1000, which let a send start
+ * that could only deliver a tenth of itself. This is the limit that actually
+ * bites, so it is the one the admin is shown.
+ */
+export const DAILY_LIMIT = Math.max(1, Number(process.env.EMAIL_DAILY_LIMIT ?? 100) || 100);
+
 export type BatchResult = { sent: number; failed: number; errors: string[] };
 
 /**

@@ -1,7 +1,8 @@
 import { getT } from "@/lib/i18n";
 import { ensureDB, getDB } from "@/lib/store";
 import { membershipActive } from "@/lib/engine";
-import { emailConfigured, MAX_PER_SEND, BATCH_SIZE } from "@/lib/email";
+import { emailConfigured, DAILY_LIMIT } from "@/lib/email";
+import { studioDayKey } from "@/lib/time";
 import { sendStudioEmail } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,10 @@ export const maxDuration = 60;
 export default async function AdminEmail({
   searchParams,
 }: {
-  searchParams: { sent?: string; failed?: string; error?: string; to?: string; part?: string; apierror?: string };
+  searchParams: {
+    sent?: string; failed?: string; error?: string; to?: string;
+    apierror?: string; skipped?: string; remaining?: string; subject?: string; done?: string;
+  };
 }) {
   await ensureDB();
   const db = getDB();
@@ -26,14 +30,31 @@ export default async function AdminEmail({
 
   const configured = emailConfigured();
   const expired = withEmail.length - active.length;
-  // Shown next to each audience so the admin knows before pressing Send whether
-  // it takes one pass or several.
-  const partsFor = (n: number) => Math.max(1, Math.ceil(n / MAX_PER_SEND));
-  const label = (base: string, n: number) => {
-    const p = partsFor(n);
-    return p > 1 ? `${base} — ${p} sends needed` : base;
-  };
-  const maxParts = partsFor(withEmail.length);
+
+  // The provider's daily cap is the real constraint, so show exactly what is
+  // left today rather than a theoretical per-send maximum.
+  const log = db.emailLog ?? [];
+  const today = studioDayKey(new Date());
+  const sentToday = log.filter((e) => studioDayKey(e.sentAt) === today).length;
+  const leftToday = Math.max(0, DAILY_LIMIT - sentToday);
+
+  // Campaigns still owing recipients, newest first.
+  const campaigns = Array.from(new Set(log.map((e) => e.subject)))
+    .map((subject) => {
+      const rows = log.filter((e) => e.subject === subject);
+      const sentIds = new Set(rows.map((e) => e.memberId));
+      return {
+        subject,
+        sent: rows.length,
+        outstanding: withEmail.filter((m) => !sentIds.has(m.id)).length,
+        last: rows.reduce((a, b) => (a > b.sentAt ? a : b.sentAt), ""),
+      };
+    })
+    .sort((a, b) => b.last.localeCompare(a.last))
+    .slice(0, 5);
+
+  const label = (base: string, n: number) =>
+    n > leftToday ? `${base} — ${Math.ceil(n / DAILY_LIMIT)} days at ${DAILY_LIMIT}/day` : base;
 
   return (
     <main className="px-5 py-6">
@@ -51,7 +72,8 @@ export default async function AdminEmail({
           <p className="text-[14px] font-semibold">
             {t("adm.emailSent", { n: searchParams.sent })}
             {searchParams.failed ? ` · ${t("adm.emailFailed", { n: searchParams.failed })}` : ""}
-            {searchParams.part ? ` · ${t("adm.emailPartDone", { p: searchParams.part })}` : ""}
+            {searchParams.skipped ? ` · ${t("adm.emailSkipped", { n: searchParams.skipped })}` : ""}
+            {searchParams.remaining ? ` · ${t("adm.emailRemaining", { n: searchParams.remaining })}` : ""}
           </p>
           {searchParams.apierror && (
             <p className="mt-1 break-words text-[12px] text-tan-deep">{searchParams.apierror}</p>
@@ -64,10 +86,41 @@ export default async function AdminEmail({
             ? t("adm.emailNeedBoth")
             : searchParams.error === "norecipients"
               ? t("adm.emailNoRecipients")
-              : searchParams.error === "badpart"
-                ? t("adm.emailBadPart")
+              : searchParams.error === "quota"
+                ? t("adm.emailQuotaSpent", { n: searchParams.remaining ?? "0", limit: DAILY_LIMIT })
                 : t("adm.emailNotConfigured")}
         </p>
+      )}
+
+      {searchParams.done && (
+        <p className="mt-4 rounded-xl2 bg-sage-soft p-4 text-[14px] font-semibold">
+          {t("adm.emailCampaignDone", { subject: searchParams.done })}
+        </p>
+      )}
+
+      {/* The daily allowance, stated plainly. */}
+      <div className="mt-4 rounded-xl2 border border-line bg-white p-4">
+        <p className="text-[14px] font-semibold">
+          {t("adm.emailToday", { sent: sentToday, limit: DAILY_LIMIT, left: leftToday })}
+        </p>
+        <p className="mt-1 text-[12px] text-smoke">{t("adm.emailQuotaHelp")}</p>
+      </div>
+
+      {campaigns.some((c) => c.outstanding > 0) && (
+        <div className="mt-4 rounded-xl2 bg-card p-4 shadow-card">
+          <p className="text-[13px] font-semibold">{t("adm.emailUnfinished")}</p>
+          <ul className="mt-2 space-y-1">
+            {campaigns
+              .filter((c) => c.outstanding > 0)
+              .map((c) => (
+                <li key={c.subject} className="text-[13px] text-smoke">
+                  <span className="font-medium text-ink">{c.subject}</span> —{" "}
+                  {t("adm.emailCampaignState", { sent: c.sent, left: c.outstanding })}
+                </li>
+              ))}
+          </ul>
+          <p className="mt-2 text-[12px] text-smoke">{t("adm.emailContinueHelp")}</p>
+        </div>
       )}
 
       <form action={sendStudioEmail} className="mt-5 space-y-4 rounded-xl2 bg-card p-5 shadow-card">
@@ -96,20 +149,6 @@ export default async function AdminEmail({
           </select>
           <p className="mt-1 text-[12px] text-smoke">{t("adm.emailMemberHelp")}</p>
         </div>
-
-        {maxParts > 1 && (
-          <div>
-            <label htmlFor="part">{t("adm.emailPart")}</label>
-            <select id="part" name="part" defaultValue="1">
-              {Array.from({ length: maxParts }, (_, i) => (
-                <option key={i} value={i + 1}>
-                  {t("adm.emailPartN", { n: i + 1, of: maxParts })}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-[12px] text-smoke">{t("adm.emailPartHelp")}</p>
-          </div>
-        )}
 
         <div>
           <label htmlFor="subject">{t("adm.emailSubject")}</label>
@@ -145,13 +184,13 @@ export default async function AdminEmail({
         </div>
 
         <button
-          disabled={!configured}
+          disabled={!configured || leftToday === 0}
           className="w-full rounded-xl2 bg-ink py-3 text-[14px] font-semibold text-white disabled:opacity-40"
         >
           {t("adm.emailSend")}
         </button>
         <p className="text-[12px] text-smoke">
-          {t("adm.emailLimit", { max: MAX_PER_SEND, batch: BATCH_SIZE })}
+          {leftToday === 0 ? t("adm.emailNoneLeft") : t("adm.emailWillSend", { n: leftToday })}
         </p>
       </form>
     </main>
