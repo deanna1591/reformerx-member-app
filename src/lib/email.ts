@@ -2,6 +2,9 @@
 
 const KEY = (process.env.RESEND_API_KEY ?? "").trim();
 const FROM = (process.env.EMAIL_FROM ?? "ReformerX <noreply@reformerx.cz>").trim();
+/** Where member replies land. The From address is unattended. */
+const REPLY_TO = (process.env.EMAIL_REPLY_TO ?? "info@reformerx.cz").trim();
+export { REPLY_TO };
 
 export function emailConfigured(): boolean {
   return KEY.length > 0;
@@ -49,7 +52,14 @@ export async function sendEmailBatch(
         method: "POST",
         headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify(
-          chunk.map((m) => ({ from: FROM, to: [m.to], subject: m.subject, html: m.html, text: m.text }))
+          chunk.map((m) => ({
+            from: FROM,
+            to: [m.to],
+            reply_to: REPLY_TO,
+            subject: m.subject,
+            html: m.html,
+            text: m.text,
+          }))
         ),
       });
       const bodyText = await res.text().catch(() => "");
@@ -92,7 +102,7 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to: [to], subject, html, text }),
+      body: JSON.stringify({ from: FROM, to: [to], reply_to: REPLY_TO, subject, html, text }),
     });
     if (!res.ok) {
       console.error("[email] send failed:", res.status, await res.text().catch(() => ""));
@@ -178,12 +188,16 @@ export function studioMessageEmail(opts: {
     <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#4A443D">Hi ${escapeHtml(first)},</p>
     ${htmlBody}
     ${cta}
+    <p style="margin:28px 0 0;padding-top:20px;border-top:1px solid #E4E1D7;font-size:13px;color:#8A8378">
+      ReformerX · Haštalská, Prague 1<br />
+      Reply to this email or write to <a href="mailto:${REPLY_TO}" style="color:#8A8378">${REPLY_TO}</a>
+    </p>
   </div>
 </div>`;
 
   const text = `Hi ${first},\n\n${paragraphs.join("\n\n")}${
     opts.ctaUrl ? `\n\n${opts.ctaLabel}: ${opts.ctaUrl}` : ""
-  }`;
+  }\n\nReformerX · Haštalská, Prague 1\nReply to this email or write to ${REPLY_TO}`;
 
   return { subject: opts.subject, html, text };
 }
