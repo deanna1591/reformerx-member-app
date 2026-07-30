@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const MAX_BYTES = 100 * 1024;
+const MAX_BYTES = 2 * 1024 * 1024; // artwork goes to Storage, not the DB row
 
 /**
  * Reads the chosen image in the browser and submits it as a data URL, so the
@@ -23,7 +23,7 @@ export default function BadgeUpload({
     setError("");
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      setError(`${Math.round(file.size / 1024)} KB — too large, keep it under 100 KB`);
+      setError(`${Math.round(file.size / 1024)} KB — too large, keep it under 2 MB`);
       return;
     }
     const reader = new FileReader();

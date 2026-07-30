@@ -586,14 +586,14 @@ export async function saveInstructor(formData: FormData) {
   const active = formData.get("active") !== null;
   const photoUrlField = String(formData.get("photoUrl") ?? "").trim();
 
-  // Photo upload → data URL (kept small; the studio has a handful of coaches)
+  // Photo upload → Supabase Storage. Inline data URLs made this collection the
+  // largest in the database, and ensureDB() loads all of it on every render.
   let photoUrl = photoUrlField || undefined;
   const file = formData.get("photo");
-  if (file && typeof file === "object" && "arrayBuffer" in file && (file as File).size > 0) {
-    const f = file as File;
-    if (f.size <= 900_000 && f.type.startsWith("image/")) {
-      const buf = Buffer.from(await f.arrayBuffer());
-      photoUrl = `data:${f.type};base64,${buf.toString("base64")}`;
+  if (file && typeof file === "object" && "size" in file && (file as File).size > 0) {
+    if ((file as File).size <= 4_000_000) {
+      const { uploadFormImage } = await import("@/lib/storage");
+      photoUrl = (await uploadFormImage(file, "instructors")) ?? photoUrl;
     }
   }
 
@@ -683,10 +683,10 @@ export async function savePromotion(formData: FormData) {
 
   let imageUrl = str("imageUrl");
   const file = formData.get("image");
-  if (file && typeof file === "object" && "arrayBuffer" in file && (file as File).size > 0) {
-    const f = file as File;
-    if (f.size <= 1_200_000 && f.type.startsWith("image/")) {
-      imageUrl = `data:${f.type};base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
+  if (file && typeof file === "object" && "size" in file && (file as File).size > 0) {
+    if ((file as File).size <= 4_000_000) {
+      const { uploadFormImage } = await import("@/lib/storage");
+      imageUrl = (await uploadFormImage(file, "promotions")) ?? imageUrl;
     }
   }
 
@@ -1104,9 +1104,14 @@ export async function saveBadge(fd: FormData): Promise<void> {
   const classesRequired = Math.max(1, Math.min(2000, parseInt(String(fd.get("classesRequired") ?? "0"), 10) || 0));
   const imageUrl = String(fd.get("imageUrl") ?? "");
   if (!name || !classesRequired) return;
-  // 100 KB cap enforced in the browser too; re-checked here because a form post
-  // can be crafted by hand and a huge data URL would bloat every DB read.
-  const safeImage = imageUrl.startsWith("data:image/") && imageUrl.length < 140_000 ? imageUrl : undefined;
+  // The browser sends a data URL; move it straight to Storage so the badge row
+  // holds a link rather than the bytes. Eighteen inline badges would otherwise
+  // be megabytes on every page render.
+  let safeImage: string | undefined;
+  if (imageUrl.startsWith("data:image/") && imageUrl.length < 6_000_000) {
+    const { uploadDataUrl } = await import("@/lib/storage");
+    safeImage = (await uploadDataUrl(imageUrl, "badges")) ?? undefined;
+  }
 
   db.badgeDefs.push({
     id: `bd-custom-${Date.now().toString(36)}`,
