@@ -1138,3 +1138,142 @@ export async function deleteBadge(fd: FormData): Promise<void> {
   await saveDBAsync();
   revalidatePath("/admin/badges");
 }
+
+
+/* ---------- studio email ---------- */
+
+/**
+ * Send a message to one member or to a filtered group.
+ *
+ * Resend's API takes one recipient per call, so a broadcast is a loop. It runs
+ * in small batches with a pause between them: Resend rate-limits, and firing 998
+ * requests at once gets a chunk of them rejected. Every failure is counted and
+ * reported rather than swallowed — a half-delivered broadcast the admin thinks
+ * went out is worse than an obvious error.
+ *
+ * Deliberately not a background job: on Hobby the function is capped at 60s, so
+ * the admin sees a real result instead of a fire-and-forget that may have died.
+ */
+export async function sendStudioEmail(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+
+  const subject = String(formData.get("subject") ?? "").trim().slice(0, 150);
+  const body = String(formData.get("body") ?? "").trim().slice(0, 5000);
+  const audience = String(formData.get("audience") ?? "one");
+  const memberId = String(formData.get("memberId") ?? "");
+  const ctaLabel = String(formData.get("ctaLabel") ?? "").trim().slice(0, 40);
+  const ctaUrl = String(formData.get("ctaUrl") ?? "").trim().slice(0, 300);
+
+  if (!subject || !body) redirect("/admin/email?error=missing");
+
+  const { membershipActive } = await import("@/lib/engine");
+  let recipients =
+    audience === "one"
+      ? db.members.filter((m) => m.id === memberId)
+      : audience === "active"
+        ? db.members.filter((m) => membershipActive(m))
+        : audience === "expired"
+          ? db.members.filter((m) => !membershipActive(m))
+          : db.members.slice();
+
+  // No address, nothing to send to. The placeholder addresses the dev seeder
+  // writes must never receive anything either.
+  recipients = recipients.filter(
+    (m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid")
+  );
+
+  if (recipients.length === 0) redirect("/admin/email?error=norecipients");
+
+  const { sendEmail, studioMessageEmail, emailConfigured } = await import("@/lib/email");
+  if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
+
+  let sent = 0;
+  let failed = 0;
+  const BATCH = 8;
+  for (let i = 0; i < recipients.length; i += BATCH) {
+    const slice = recipients.slice(i, i + BATCH);
+    const results = await Promise.all(
+      slice.map((m) => {
+        const msg = studioMessageEmail({
+          name: m.name,
+          subject,
+          body,
+          ctaLabel: ctaLabel || undefined,
+          ctaUrl: ctaUrl || undefined,
+        });
+        return sendEmail(m.email, msg.subject, msg.html, msg.text).catch(() => false);
+      })
+    );
+    for (const r of results) (r ? sent++ : failed++);
+    if (i + BATCH < recipients.length) await new Promise((r) => setTimeout(r, 600));
+  }
+
+  // Mirror it in-app so a member who missed the email still sees it.
+  if (audience !== "one") {
+    for (const m of recipients) notify(m.id, `${subject}`);
+    await saveDBAsync();
+  }
+
+  revalidatePath("/admin/email");
+  redirect(`/admin/email?sent=${sent}${failed ? `&failed=${failed}` : ""}`);
+}
+
+
+/**
+ * Edit an existing challenge.
+ *
+ * Only while nobody has joined. Once a member is part-way through, changing the
+ * goal or the rule silently rewrites what they signed up for — someone at 8/10
+ * could drop to 8/20, or a rolling window could become a fixed one and wipe
+ * their progress. The rules are read live by computeProgress, so there is no
+ * record of what the challenge used to be.
+ *
+ * Reward text and dates stay editable regardless; those don't change the maths.
+ */
+export async function updateChallenge(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+
+  const id = String(formData.get("id") ?? "");
+  const ch = db.challenges.find((c) => c.id === id);
+  if (!ch) redirect("/admin/challenges?error=notfound");
+
+  const joined = db.challengeProgress.filter((p) => p.challengeId === id).length;
+
+  // Always safe to change — presentation and reward, not scoring.
+  ch.name = String(formData.get("name") ?? ch.name).slice(0, 60) || ch.name;
+  ch.emoji = String(formData.get("emoji") || ch.emoji).slice(0, 4);
+  ch.description = String(formData.get("description") ?? ch.description).slice(0, 300);
+  ch.reward = String(formData.get("reward") ?? ch.reward).slice(0, 120);
+  ch.springColor = (formData.get("springColor") as Challenge["springColor"]) ?? ch.springColor;
+  ch.leaderboard = formData.get("leaderboard") === "on";
+
+  const startDate = String(formData.get("startDate") ?? "");
+  const endDate = String(formData.get("endDate") ?? "");
+  if (startDate) ch.startDate = new Date(startDate).toISOString();
+  if (endDate) ch.endDate = new Date(endDate).toISOString();
+
+  // Scoring rules — only with nobody mid-challenge.
+  if (joined === 0) {
+    const type = formData.get("type") as Challenge["type"] | null;
+    if (type) ch.type = type;
+    const goal = Number(formData.get("goal"));
+    if (Number.isFinite(goal) && goal >= 0) ch.goal = Math.floor(goal);
+    const windowDays = Number(formData.get("windowDays"));
+    if (Number.isFinite(windowDays) && windowDays > 0) ch.windowDays = Math.floor(windowDays);
+    if (ch.type === "rolling_count") {
+      // A rolling window measures from each member's join date; leftover fixed
+      // dates would be read as a second, conflicting constraint.
+      delete ch.startDate;
+      delete ch.endDate;
+    }
+  }
+
+  await saveDBAsync();
+  revalidatePath("/admin/challenges");
+  revalidatePath("/challenges");
+  redirect(`/admin/challenges?updated=${encodeURIComponent(ch.name)}${joined > 0 ? "&locked=1" : ""}`);
+}

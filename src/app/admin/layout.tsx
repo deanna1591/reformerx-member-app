@@ -29,6 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     items.push(
       ["/admin/passes", t("adm.nav.passes")],
       ["/admin/badges", t("adm.badges")],
+      ["/admin/email", t("adm.email")],
       ["/admin/promotions", t("adm.nav.whatsOn")],
       ["/admin/instructors", t("adm.nav.instructors")],
       ["/admin/health", t("adm.h.title")],

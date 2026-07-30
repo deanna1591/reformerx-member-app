@@ -1,6 +1,6 @@
 import { getDB, ensureDB } from "@/lib/store";
 import { getT } from "@/lib/i18n";
-import { createChallenge, toggleChallenge, deleteChallenge, addStarterChallenges } from "@/app/actions";
+import { createChallenge, toggleChallenge, deleteChallenge, addStarterChallenges, updateChallenge } from "@/app/actions";
 import ConfirmButton from "@/components/ConfirmButton";
 import { fmtDate, challengeGoal } from "@/lib/engine";
 
@@ -54,6 +54,98 @@ export default async function AdminChallenges() {
                   {joined > 0 && <span className="px-1 text-[11px] text-smoke">{t("adm.c.cannotDelete")}</span>}
                 </div>
               </div>
+
+              {/* Editing lives in a <details> so the list stays scannable. The
+                  scoring fields disable once someone has joined — changing a
+                  goal mid-challenge rewrites what they signed up for. */}
+              <details className="mt-4 border-t border-line pt-3">
+                <summary className="cursor-pointer text-[12px] font-semibold text-smoke">
+                  {t("adm.c.edit")}
+                </summary>
+                <form action={updateChallenge} className="mt-3 space-y-3">
+                  <input type="hidden" name="id" value={ch.id} />
+
+                  <div className="grid grid-cols-[64px_1fr] gap-3">
+                    <div>
+                      <label htmlFor={`emoji-${ch.id}`}>{t("adm.c.emoji")}</label>
+                      <input id={`emoji-${ch.id}`} name="emoji" defaultValue={ch.emoji} maxLength={4} />
+                    </div>
+                    <div>
+                      <label htmlFor={`name-${ch.id}`}>{t("adm.c.name")}</label>
+                      <input id={`name-${ch.id}`} name="name" defaultValue={ch.name} maxLength={60} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor={`desc-${ch.id}`}>{t("adm.c.description")}</label>
+                    <textarea id={`desc-${ch.id}`} name="description" rows={2} defaultValue={ch.description} maxLength={300} />
+                  </div>
+
+                  <div>
+                    <label htmlFor={`reward-${ch.id}`}>{t("adm.c.reward")}</label>
+                    <input id={`reward-${ch.id}`} name="reward" defaultValue={ch.reward} maxLength={120} />
+                  </div>
+
+                  <fieldset disabled={joined > 0} className="space-y-3 disabled:opacity-50">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor={`type-${ch.id}`}>{t("adm.c.type")}</label>
+                        <select id={`type-${ch.id}`} name="type" defaultValue={ch.type}>
+                          <option value="lifetime_count">{t("adm.c.tLifetime")}</option>
+                          <option value="class_count">{t("adm.c.tPeriod")}</option>
+                          <option value="rolling_count">{t("adm.c.tRolling")}</option>
+                          <option value="monthly_count">{t("adm.c.tMonthly")}</option>
+                          <option value="streak_days">{t("adm.c.tStreak")}</option>
+                          <option value="instructor_variety">{t("adm.c.tVariety")}</option>
+                          <option value="referrals">{t("adm.c.tReferrals")}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`goal-${ch.id}`}>{t("adm.c.goal")}</label>
+                        <input id={`goal-${ch.id}`} name="goal" type="number" min={0} defaultValue={ch.goal} />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor={`window-${ch.id}`}>{t("adm.c.windowDays")}</label>
+                      <input id={`window-${ch.id}`} name="windowDays" type="number" min={1} max={365} defaultValue={ch.windowDays ?? ""} />
+                    </div>
+                  </fieldset>
+                  {joined > 0 && (
+                    <p className="text-[12px] text-smoke">{t("adm.c.lockedRules", { n: joined })}</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor={`start-${ch.id}`}>{t("adm.c.startDate")}</label>
+                      <input id={`start-${ch.id}`} name="startDate" type="date" defaultValue={ch.startDate ? String(ch.startDate).slice(0, 10) : ""} />
+                    </div>
+                    <div>
+                      <label htmlFor={`end-${ch.id}`}>{t("adm.c.endDate")}</label>
+                      <input id={`end-${ch.id}`} name="endDate" type="date" defaultValue={ch.endDate ? String(ch.endDate).slice(0, 10) : ""} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <label htmlFor={`colour-${ch.id}`}>{t("adm.c.colour")}</label>
+                      <select id={`colour-${ch.id}`} name="springColor" defaultValue={ch.springColor}>
+                        <option value="red">{t("adm.c.cRed")}</option>
+                        <option value="yellow">{t("adm.c.cYellow")}</option>
+                        <option value="green">{t("adm.c.cGreen")}</option>
+                        <option value="blue">{t("adm.c.cBlue")}</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 pt-5 text-[13px]">
+                      <input type="checkbox" name="leaderboard" defaultChecked={ch.leaderboard} className="w-auto" />
+                      {t("adm.c.leaderboard")}
+                    </label>
+                  </div>
+
+                  <button className="w-full rounded-xl2 bg-ink py-2.5 text-[13px] font-semibold text-white">
+                    {t("adm.c.saveChanges")}
+                  </button>
+                </form>
+              </details>
             </div>
             );
           })}
