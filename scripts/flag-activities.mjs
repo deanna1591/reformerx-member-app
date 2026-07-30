@@ -15,8 +15,13 @@ import path from "node:path";
 
 const DRY = process.argv.includes("--dry");
 
-// Ids from the current roster. Add to this list if new ones appear.
+// Ids from the current roster. Add to these if new ones appear.
 const ACTIVITY_IDS = ["i-sb-14", "i-sb-16"]; // RX Cycling club, RX Master Teacher
+
+// Same human under a second provider row: alias -> canonical id.
+// Counted as one person, so the coach challenge target isn't inflated, but a
+// class booked against the alias still counts as having met them.
+const ALIASES = { "i-sb-7": "i-karolina" }; // Karolina (Private class) -> Karolina
 
 const env = {};
 for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n")) {
@@ -38,15 +43,31 @@ console.log(`Backed up -> backups/instructors-${stamp}.json\n`);
 
 let changed = 0;
 for (const i of instructors) {
-  const want = ACTIVITY_IDS.includes(i.id);
-  if (want && !i.isActivity) {
+  if (ACTIVITY_IDS.includes(i.id) && !i.isActivity) {
     i.isActivity = true;
     changed++;
   }
-  const tag = i.isActivity ? "ACTIVITY — excluded" : "coach";
+  const alias = ALIASES[i.id];
+  if (alias && i.sameAs !== alias) {
+    i.sameAs = alias;
+    changed++;
+  }
+  const tag = i.isActivity
+    ? "ACTIVITY — not counted"
+    : i.sameAs
+      ? `same person as ${i.sameAs}`
+      : "coach — counted";
   console.log(`  ${i.id.padEnd(16)} ${String(i.name).slice(0, 24).padEnd(26)} ${tag}`);
 }
-console.log(`\n${changed} row(s) newly flagged`);
+console.log(`\n${changed} change(s)`);
+
+// Warn about an alias pointing nowhere — that would silently drop a coach.
+for (const [from, to] of Object.entries(ALIASES)) {
+  if (!instructors.some((i) => i.id === to)) console.log(`  !! alias target ${to} does not exist`);
+}
+
+const counted = instructors.filter((i) => !i.isActivity && !i.sameAs).length;
+console.log(`Coach challenge target will be at most ${counted} (those actually teaching in the last 90 days).`);
 
 if (DRY) {
   console.log("\n--dry given, nothing written.");
@@ -64,4 +85,7 @@ if (!put.ok) {
 }
 const back = await fetch(`${SUPA}/rest/v1/app_state?key=eq.db:instructors&select=value`, { headers });
 const after = (await back.json())[0]?.value ?? [];
-console.log(`\nWrote db:instructors. ${after.filter((i) => i.isActivity).length} flagged as activities, ${after.filter((i) => !i.isActivity).length} coaches.`);
+console.log(
+  `\nWrote db:instructors. ${after.filter((i) => i.isActivity).length} activities, ` +
+    `${after.filter((i) => i.sameAs).length} aliases, ${after.filter((i) => !i.isActivity && !i.sameAs).length} distinct coaches.`
+);

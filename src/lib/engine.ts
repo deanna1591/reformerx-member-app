@@ -156,6 +156,27 @@ export function attendedClasses(memberId: string): Array<{ classId: string; at: 
  * instructor the studio currently has", so the goal tracks the roster instead
  * of going stale whenever a coach joins or leaves.
  */
+/**
+ * Collapses duplicate instructor rows onto one person.
+ *
+ * SimplyBook produces several providers for the same coach — a private-class
+ * variant, a pre-merge leftover. For anything that counts *people* rather than
+ * bookable slots, resolve through this first.
+ */
+export function canonicalInstructorId(id: string | undefined): string | undefined {
+  if (!id) return undefined;
+  const db = getDB();
+  const seen = new Set<string>();
+  let cur = id;
+  for (;;) {
+    if (seen.has(cur)) return cur; // guard against a bad self-referencing chain
+    seen.add(cur);
+    const next = db.instructors.find((i) => i.id === cur)?.sameAs;
+    if (!next || next === cur) return cur;
+    cur = next;
+  }
+}
+
 export function challengeGoal(ch: Challenge): number {
   if (ch.type === "instructor_variety" && ch.goal <= 0) {
     // Count who actually teaches, not how many instructor rows exist.
@@ -173,7 +194,8 @@ export function challengeGoal(ch: Challenge): number {
     const teaching = new Set(
       db.classes
         .filter((c) => c.instructorId && !activities.has(c.instructorId) && new Date(c.startsAt).getTime() >= from)
-        .map((c) => c.instructorId)
+        .map((c) => canonicalInstructorId(c.instructorId))
+        .filter(Boolean)
     );
     return Math.max(1, teaching.size);
   }
@@ -189,7 +211,7 @@ export function teachingInstructors(days = 90) {
       .filter((c) => c.instructorId && new Date(c.startsAt).getTime() >= from)
       .map((c) => c.instructorId)
   );
-  return db.instructors.filter((i) => ids.has(i.id) && !i.isActivity);
+  return db.instructors.filter((i) => ids.has(i.id) && !i.isActivity && !i.sameAs);
 }
 
 export function computeProgress(memberId: string, ch: Challenge): number {
@@ -230,6 +252,8 @@ export function computeProgress(memberId: string, ch: Challenge): number {
         mine
           .map((a) => db.classes.find((c) => c.id === a.classId)?.instructorId)
           .filter((id): id is string => Boolean(id) && !activities.has(id as string))
+          .map((id) => canonicalInstructorId(id))
+          .filter(Boolean)
       );
       return ids.size;
     }

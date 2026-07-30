@@ -45,6 +45,14 @@ export interface Instructor {
    * from the Meet Every Coach challenge on both sides of the count.
    */
   isActivity?: boolean;
+  /**
+   * Id of the canonical row when this is the same human under another name —
+   * "Karolina (Private class)" is Karolina. Kept as a separate row because
+   * SimplyBook books against it, but counted as one person, so the coach
+   * challenge target isn't inflated and a private class still counts as having
+   * met her.
+   */
+  sameAs?: string;
   simplybookUnitId?: string;
 }
 
