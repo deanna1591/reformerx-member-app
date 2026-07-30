@@ -16,3 +16,5 @@ npm-debug.log*
 *.tsbuildinfo
 nohup.out
 .backups/
+backups/
+backups/
