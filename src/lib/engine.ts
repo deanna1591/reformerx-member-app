@@ -158,9 +158,37 @@ export function attendedClasses(memberId: string): Array<{ classId: string; at: 
  */
 export function challengeGoal(ch: Challenge): number {
   if (ch.type === "instructor_variety" && ch.goal <= 0) {
-    return Math.max(1, getDB().instructors.filter((i) => i.active !== false).length);
+    // Count who actually teaches, not how many instructor rows exist.
+    //
+    // The roster table carries entries a member can never take a class with:
+    // non-teaching providers ("RX Master Teacher", "RX Cycling club"), private
+    // class variants, and duplicates of the same coach from before the
+    // SimplyBook merge. Counting rows made this challenge unachievable — 13
+    // when only 9 coaches teach. Deriving it from the timetable is
+    // self-maintaining: a coach who leaves drops out once their classes age
+    // past the window, and a new coach counts as soon as they're scheduled.
+    const db = getDB();
+    const from = Date.now() - 90 * 86400000;
+    const teaching = new Set(
+      db.classes
+        .filter((c) => c.instructorId && new Date(c.startsAt).getTime() >= from)
+        .map((c) => c.instructorId)
+    );
+    return Math.max(1, teaching.size);
   }
   return ch.goal;
+}
+
+/** The coaches a member could actually meet, for the admin view. */
+export function teachingInstructors(days = 90) {
+  const db = getDB();
+  const from = Date.now() - days * 86400000;
+  const ids = new Set(
+    db.classes
+      .filter((c) => c.instructorId && new Date(c.startsAt).getTime() >= from)
+      .map((c) => c.instructorId)
+  );
+  return db.instructors.filter((i) => ids.has(i.id));
 }
 
 export function computeProgress(memberId: string, ch: Challenge): number {
