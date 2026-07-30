@@ -12,6 +12,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { target } from "./_target.mjs";
 
 const DRY = process.argv.includes("--dry");
 
@@ -27,14 +28,8 @@ const ALIASES = {
 };
 // Deliberately NOT aliased: i-karolina2 "Karolína K." is a different person.
 
-const env = {};
-for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n")) {
-  const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-  if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
-}
-const SUPA = (env.SUPABASE_URL || "").replace(/\/$/, "");
-const KEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
-const headers = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
+const T = target({ write: true });
+const { url: SUPA, headers } = T;
 
 const res = await fetch(`${SUPA}/rest/v1/app_state?key=eq.db:instructors&select=value`, { headers });
 const rows = await res.json();

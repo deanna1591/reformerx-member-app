@@ -14,6 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { target } from "./_target.mjs";
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
@@ -30,19 +31,8 @@ if (!fs.existsSync(file)) {
   process.exit(1);
 }
 
-let SUPA = process.env.SUPABASE_URL ?? "";
-let KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-if ((!SUPA || !KEY) && fs.existsSync(".env.local")) {
-  for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-    if (!m) continue;
-    const v = m[2].replace(/^["']|["']$/g, "").trim();
-    if (m[1] === "SUPABASE_URL" && !SUPA) SUPA = v;
-    if (m[1] === "SUPABASE_SERVICE_ROLE_KEY" && !KEY) KEY = v;
-  }
-}
-SUPA = SUPA.replace(/\/$/, "");
-const headers = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
+const T = target({ write: true });
+const { url: SUPA, headers } = T;
 
 const backup = JSON.parse(fs.readFileSync(file, "utf8"));
 if (!Array.isArray(backup)) {

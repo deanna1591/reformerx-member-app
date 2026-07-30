@@ -17,22 +17,32 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { target } from "./_target.mjs";
 
 const DRY = process.argv.includes("--dry");
 
 /* ---------- env ---------- */
-const env = {};
-for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n")) {
-  const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-  if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
-}
+const T = target({ write: true });
+// SimplyBook credentials are the same for either database — it is the source
+// of truth, and this script only ever reads from it.
+const sb = (() => {
+  const out = {};
+  for (const f of [".env.development.local", ".env.local"]) {
+    if (!fs.existsSync(f)) continue;
+    for (const line of fs.readFileSync(f, "utf8").split("\n")) {
+      const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
+      if (m && out[m[1]] === undefined) out[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
+    }
+  }
+  return out;
+})();
+const env = sb;
 const STUDIO_TZ = env.STUDIO_TZ || "Europe/Prague";
 const SB_BASE = env.SIMPLYBOOK_API_BASE || "https://user-api-v2.simplybook.it";
 const company = env.SIMPLYBOOK_COMPANY;
-const SUPA = (env.SUPABASE_URL || "").replace(/\/$/, "");
-const SKEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
+const { url: SUPA, key: SKEY } = T;
 
-for (const [k, v] of Object.entries({ SIMPLYBOOK_COMPANY: company, SUPABASE_URL: SUPA, SUPABASE_SERVICE_ROLE_KEY: SKEY })) {
+for (const [k, v] of Object.entries({ SIMPLYBOOK_COMPANY: company })) {
   if (!v) {
     console.error(`Missing ${k} in .env.local`);
     process.exit(1);

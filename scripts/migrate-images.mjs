@@ -13,21 +13,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { target } from "./_target.mjs";
 
 const DRY = process.argv.includes("--dry");
 const BUCKET = process.env.SUPABASE_MEDIA_BUCKET || "rx-media";
 
-const env = {};
-for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n")) {
-  const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-  if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
-}
-const SUPA = (env.SUPABASE_URL || "").replace(/\/$/, "");
-const KEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
-if (!SUPA || !KEY) {
-  console.error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in .env.local");
-  process.exit(1);
-}
+const T = target({ write: true });
+const { url: SUPA, key: KEY } = T;
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg" };
 
