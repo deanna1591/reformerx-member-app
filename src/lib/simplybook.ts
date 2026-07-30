@@ -344,7 +344,9 @@ export interface SyncResult {
  *  and refreshes only what changes minute to minute: bookings, the timetable and
  *  remaining places. Designed to finish well inside a serverless timeout so it
  *  can run every few minutes. Run the full sync nightly for passes and members. */
-export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: string } = {}): Promise<SyncResult> {
+export async function syncFromSimplybook(
+  opts: { quick?: boolean; debugDate?: string; bookingDays?: number } = {}
+): Promise<SyncResult> {
   const quick = opts.quick === true;
   if (!simplybookConfigured()) {
     return {
@@ -443,7 +445,15 @@ export async function syncFromSimplybook(opts: { quick?: boolean; debugDate?: st
   }
 
   /* 3 — bookings (yesterday → +14d) → classes + bookings */
-  const bookingDays = quick ? 7 : Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
+  // An explicit override exists so a full client/membership sync can run without
+  // also walking years of booking history — SIMPLYBOOK_BOOKING_DAYS is 1095 here,
+  // which pushes the whole run past the 60s function ceiling.
+  const bookingDays =
+    opts.bookingDays && opts.bookingDays > 0
+      ? Math.max(1, Math.min(2000, Math.floor(opts.bookingDays)))
+      : quick
+        ? 7
+        : Math.max(7, Number(process.env.SIMPLYBOOK_BOOKING_DAYS ?? 45) || 45);
   const from = new Date(Date.now() - bookingDays * 86400000).toISOString().slice(0, 10);
   const to = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   let bookings: SbBooking[] = [];

@@ -3,7 +3,7 @@ import { ensureDB, getDB, saveDBAsync, forceFullWrite, verifyWrite } from "@/lib
 import { syncFromSimplybook, simplybookConfigured } from "@/lib/simplybook";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /** Scheduled sync (Vercel Cron). Keeps members, passes, bookings and the
  *  timetable current even if a webhook is missed — new SimplyBook clients get
@@ -26,8 +26,10 @@ export async function GET(req: NextRequest) {
   const quick = new URL(req.url).searchParams.get("mode") !== "full";
   const debugDate = new URL(req.url).searchParams.get("debugDate") ?? undefined;
   const force = new URL(req.url).searchParams.get("force") === "1";
+  const bookingDaysParam = Number(new URL(req.url).searchParams.get("bookingDays") ?? "");
+  const bookingDays = Number.isFinite(bookingDaysParam) && bookingDaysParam > 0 ? bookingDaysParam : undefined;
   try {
-    const result = await syncFromSimplybook({ quick, debugDate });
+    const result = await syncFromSimplybook({ quick, debugDate, bookingDays });
     // Nudge anyone whose pass runs out shortly (once per pass)
     const { sendRenewalReminders, memberLocale, dueClassReminders, markReminderSent } = await import("@/lib/engine");
     const { sendPush } = await import("@/lib/push");
