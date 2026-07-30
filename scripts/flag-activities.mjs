@@ -21,7 +21,11 @@ const ACTIVITY_IDS = ["i-sb-14", "i-sb-16"]; // RX Cycling club, RX Master Teach
 // Same human under a second provider row: alias -> canonical id.
 // Counted as one person, so the coach challenge target isn't inflated, but a
 // class booked against the alias still counts as having met them.
-const ALIASES = { "i-sb-7": "i-karolina" }; // Karolina (Private class) -> Karolina
+const ALIASES = {
+  "i-sb-7": "i-karolina", // Karolina (Private class) -> Karolina
+  "i-sb-11": "i-lukas", // Luke -> Lukáš (same person; the accented row is canonical)
+};
+// Deliberately NOT aliased: i-karolina2 "Karolína K." is a different person.
 
 const env = {};
 for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n")) {
