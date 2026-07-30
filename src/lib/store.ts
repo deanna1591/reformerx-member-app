@@ -245,6 +245,10 @@ const COLLECTIONS = [
   "instructors",
   "challenges",
   "challengeProgress",
+  // badgeDefs must persist: built-ins come from code via seed(), but a badge the
+  // owner uploads exists only here, and without this it vanished on the next
+  // cold start.
+  "badgeDefs",
   "earnedBadges",
   "earnedRewards",
   "notifications",
