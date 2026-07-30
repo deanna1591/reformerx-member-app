@@ -27,18 +27,38 @@ const LOGO_URL = (() => {
 /** Display height in px. Width follows the image's own proportions. */
 const LOGO_HEIGHT = Math.max(16, Math.min(120, Number(process.env.EMAIL_LOGO_HEIGHT ?? 40) || 40));
 
+/** Set EMAIL_LOGO_PANEL=0 if the logo is dark and needs no panel behind it. */
+const LOGO_PANEL = process.env.EMAIL_LOGO_PANEL !== "0";
+
 /**
  * The header block: logo if we have one, otherwise the wordmark in type.
  *
- * Height is fixed and width deliberately left off — the logo may be a square
+ * A white logo is invisible on the near-white card, so it sits on an ink panel.
+ * That panel is a table with both the bgcolor attribute and a background-color
+ * style — Outlook ignores CSS backgrounds on divs, and a missing background is
+ * the one failure that makes the logo disappear entirely.
+ *
+ * Height is fixed and width deliberately omitted: the mark may be a square
  * monogram or a wide wordmark, and a hardcoded width would squash one of them.
- * Clients scale proportionally from height alone.
  */
 function header(): string {
-  if (LOGO_URL && /^https:\/\//.test(LOGO_URL)) {
-    return `<img src="${LOGO_URL}" alt="ReformerX" height="${LOGO_HEIGHT}" style="display:block;height:${LOGO_HEIGHT}px;width:auto;max-width:200px;border:0;margin:0 0 18px" />`;
+  if (!LOGO_URL || !/^https:\/\//.test(LOGO_URL)) {
+    return `<p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>`;
   }
-  return `<p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>`;
+
+  const img = `<img src="${LOGO_URL}" alt="ReformerX" height="${LOGO_HEIGHT}" style="display:block;height:${LOGO_HEIGHT}px;width:auto;max-width:220px;border:0" />`;
+
+  if (!LOGO_PANEL) {
+    return `<div style="margin:0 0 18px">${img}</div>`;
+  }
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 22px">
+      <tr>
+        <td bgcolor="#171310" align="center" style="background-color:#171310;border-radius:14px;padding:20px 24px">
+          ${img.replace('style="display:block;', 'style="display:inline-block;')}
+        </td>
+      </tr>
+    </table>`;
 }
 
 export function emailConfigured(): boolean {
