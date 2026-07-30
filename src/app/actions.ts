@@ -352,9 +352,24 @@ export async function simulateSimplybookSync() {
   revalidatePath("/admin/members");
 }
 
+/**
+ * DESTRUCTIVE. Replaces the entire database with seed data — it does not
+ * "remove demo data", despite the old label. This wiped 991 real members once.
+ *
+ * No longer reachable from the admin UI. It also refuses outright whenever the
+ * database contains SimplyBook-sourced members, so even a stray call can't
+ * repeat that. Local demo resets still work on a database that only holds seed
+ * data, which is the only case it was ever meant for.
+ */
 export async function resetDemoData() {
   await ensureDB();
   requireAdmin();
+  const real = getDB().members.filter((m) => m.simplybookId).length;
+  if (real > 0) {
+    throw new Error(
+      `resetDemoData refused: ${real} SimplyBook members present. This would destroy real data.`
+    );
+  }
   resetDB();
   revalidatePath("/", "layout");
 }

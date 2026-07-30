@@ -1,7 +1,7 @@
 import { getDB, ensureDB } from "@/lib/store";
 import { getT } from "@/lib/i18n";
 import { computeProgress } from "@/lib/engine";
-import { sendAnnouncement, resetDemoData } from "@/app/actions";
+import { sendAnnouncement } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -89,9 +89,6 @@ export default async function AdminOverview() {
           <form action={sendAnnouncement} className="mt-3 space-y-3 rounded-xl2 bg-white p-5 shadow-card">
             <textarea name="text" rows={3} placeholder="New Saturday 9:00 class starts this week…" />
             <button className="rounded-xl bg-ink px-5 py-2.5 text-[14px] font-semibold text-white">{t("adm.sendToAll")}</button>
-          </form>
-          <form action={resetDemoData} className="mt-4">
-            <button className="text-[12px] font-medium text-smoke underline">{t("adm.resetDemo")}</button>
           </form>
         </section>
       </div>

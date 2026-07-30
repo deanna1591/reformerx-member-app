@@ -121,39 +121,3 @@ export const STUDIO_CHALLENGES: Challenge[] = [
 ];
 
 export const STUDIO_CHALLENGE_IDS = new Set(STUDIO_CHALLENGES.map((c) => c.id));
-
-
-/**
- * One-time repair of the studio's existing challenges.
- *
- * The seed above matched on new ids, so it created duplicates next to the
- * studio's real challenges — which already carry rewards and member progress.
- * This corrects the rule types on the originals and removes the duplicates I
- * introduced, but only ones nobody has joined.
- *
- * Guarded by a settings flag so it runs exactly once.
- */
-export const CHALLENGE_FIXES: Record<
-  string,
-  { type: Challenge["type"]; goal?: number; windowDays?: number; description?: string }
-> = {
-  // "First 30 classes" is a lifetime total, not a dated window
-  "ch-1785256215766": { type: "lifetime_count", goal: 30 },
-  // 10 in 30 days should run from when each member joins, not fixed dates
-  "ch-10in30": { type: "rolling_count", goal: 10, windowDays: 30 },
-  // 7 classes in 7 days — not seven consecutive days
-  "ch-streak7": {
-    type: "rolling_count",
-    goal: 7,
-    windowDays: 7,
-    description: "Seven classes in seven days.",
-  },
-  // goal 0 tracks the current instructor roster
-  "ch-instructors": { type: "instructor_variety", goal: 0 },
-};
-
-/** Duplicates created by the first seed. Removed only if unjoined. */
-export const DUPLICATE_CHALLENGE_IDS = [
-  "ch-first-30", "ch-7in7", "ch-first-100",
-  "ch-seasonal", "ch-monthly-rhythm", "ch-every-coach",
-];

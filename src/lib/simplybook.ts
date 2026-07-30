@@ -14,7 +14,7 @@
  */
 import { getDB, saveDBAsync } from "./store";
 import { BUILTIN_BADGE_DEFS } from "./badges";
-import { STUDIO_CHALLENGES, CHALLENGE_FIXES, DUPLICATE_CHALLENGE_IDS } from "./challenges";
+import { STUDIO_CHALLENGES } from "./challenges";
 import { awardBadgesForAll } from "./engine";
 import { studioToISO, isoToStudioString, studioDayKey, STUDIO_TZ } from "./time";
 const STUDIO_TZ_FOR_SYNC = STUDIO_TZ;
@@ -1132,36 +1132,22 @@ export async function syncFromSimplybook(
   for (const def of BUILTIN_BADGE_DEFS) {
     if (!db.badgeDefs.some((b) => b.id === def.id)) db.badgeDefs.push({ ...def });
   }
-  // Fresh database only: seed the standard set as drafts.
-  if (db.challenges.length === 0) {
-    for (const ch of STUDIO_CHALLENGES) db.challenges.push({ ...ch });
-  }
-
-  // One-time repair for the studio's existing challenges. Reward text, dates and
-  // live/draft state are never touched — only the rule that decides progress.
-  if (db.settings.challengeFixV1 !== true) {
-    for (const [id, fix] of Object.entries(CHALLENGE_FIXES)) {
-      const ch = db.challenges.find((c) => c.id === id);
-      if (!ch) continue;
-      ch.type = fix.type;
-      if (fix.goal !== undefined) ch.goal = fix.goal;
-      if (fix.windowDays !== undefined) ch.windowDays = fix.windowDays;
-      if (fix.description) ch.description = fix.description;
-      // a rolling window supersedes the old fixed dates
-      if (fix.type === "rolling_count") {
-        delete ch.startDate;
-        delete ch.endDate;
-      }
-    }
-    // Drop the duplicates the first seed created, but never one someone joined.
-    db.challenges = db.challenges.filter(
-      (c) =>
-        !DUPLICATE_CHALLENGE_IDS.includes(c.id) ||
-        db.challengeProgress.some((p) => p.challengeId === c.id)
-    );
-    db.settings.challengeFixV1 = true;
+  // Backfill badge definitions added since this database was created, then
+  // re-evaluate every member. Badges are derived from attendance, so this also
+  // rebuilds them after a restore.
+  for (const def of BUILTIN_BADGE_DEFS) {
+    if (!db.badgeDefs.some((b) => b.id === def.id)) db.badgeDefs.push({ ...def });
   }
   const badgesAwarded = awardBadgesForAll();
+
+  // Ensure the studio's standard challenges exist, matched by id. Purely
+  // additive: an existing row keeps its reward text, dates and live/draft state.
+  //
+  // An earlier version of this deleted ids it considered duplicates, which
+  // removed six real challenges after a database reset. Nothing here deletes.
+  for (const ch of STUDIO_CHALLENGES) {
+    if (!db.challenges.some((c) => c.id === ch.id)) db.challenges.push({ ...ch });
+  }
 
   const message = `Synced ${clients.length} clients (${newMembers} new), ${membershipRows + packagePasses} passes [${membershipSource}], ${instructorRows} coaches${mergedInstructors ? ` (${mergedInstructors} merged)` : ""}, ${bookingRows} new bookings${orphanedBookings ? `, ${orphanedBookings} orphaned removed` : ""} [${bookingSource}, ${bookingDays}d], ${badgesAwarded} badges awarded, ${timetableSlots} timetable slots (${timetableNew} new)${timetableNote}${prunedClasses ? `, ${prunedClasses} stale classes removed` : ""}${fullClasses ? `, ${fullClasses} full` : ""}${activityMembers ? `, ${activityMembers} activated via booking activity` : ""}. Active members now: ${activeNow}.`;
   db.settings.lastSync = `${new Date().toISOString()}|ok|${quick ? "Quick sync — " : ""}${message}`;
