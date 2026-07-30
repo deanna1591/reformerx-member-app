@@ -1165,11 +1165,29 @@ export async function sendStudioEmail(formData: FormData) {
   const memberId = String(formData.get("memberId") ?? "");
   const ctaLabel = String(formData.get("ctaLabel") ?? "").trim().slice(0, 40);
   const ctaUrl = String(formData.get("ctaUrl") ?? "").trim().slice(0, 300);
+  const part = Math.max(1, Number(formData.get("part") ?? 1) || 1);
+
+  // Flyer or photo. Goes to Supabase Storage and rides in the email as an
+  // absolute URL — most clients (Gmail especially) strip data: URLs entirely,
+  // so an inline base64 image would simply not appear.
+  let imageUrl = String(formData.get("imageUrl") ?? "").trim().slice(0, 500);
+  const imageFile = formData.get("image");
+  if (imageFile && typeof imageFile === "object" && "size" in imageFile && (imageFile as File).size > 0) {
+    if ((imageFile as File).size <= 4_000_000) {
+      const { uploadFormImage } = await import("@/lib/storage");
+      imageUrl = (await uploadFormImage(imageFile, "email")) ?? imageUrl;
+    }
+  }
+  // A data: URL would be dropped by the mail client, so don't send one.
+  if (imageUrl.startsWith("data:")) imageUrl = "";
 
   if (!subject || !body) redirect("/admin/email?error=missing");
 
   const { membershipActive } = await import("@/lib/engine");
-  let recipients =
+  const { sendEmailBatch, studioMessageEmail, emailConfigured, MAX_PER_SEND } = await import("@/lib/email");
+  if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
+
+  let pool =
     audience === "one"
       ? db.members.filter((m) => m.id === memberId)
       : audience === "active"
@@ -1178,59 +1196,60 @@ export async function sendStudioEmail(formData: FormData) {
           ? db.members.filter((m) => !membershipActive(m))
           : db.members.slice();
 
-  // No address, nothing to send to. The placeholder addresses the dev seeder
+  // No usable address, nothing to send to. The placeholders the dev seeder
   // writes must never receive anything either.
-  recipients = recipients.filter(
-    (m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid")
-  );
+  pool = pool
+    .filter((m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid"))
+    .sort((a, b) => a.name.localeCompare(b.name)); // stable order, so parts don't overlap
 
-  if (recipients.length === 0) redirect("/admin/email?error=norecipients");
+  if (pool.length === 0) redirect("/admin/email?error=norecipients");
 
-  const { sendEmail, studioMessageEmail, emailConfigured } = await import("@/lib/email");
-  if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
+  // One send covers at most MAX_PER_SEND. A bigger audience is split into parts
+  // the admin picks explicitly, rather than the function cap deciding silently
+  // who got an email and who didn't.
+  const parts = Math.max(1, Math.ceil(pool.length / MAX_PER_SEND));
+  if (part > parts) redirect("/admin/email?error=badpart");
+  const recipients = pool.slice((part - 1) * MAX_PER_SEND, part * MAX_PER_SEND);
 
-  let sent = 0;
-  let failed = 0;
-  const BATCH = 8;
-  for (let i = 0; i < recipients.length; i += BATCH) {
-    const slice = recipients.slice(i, i + BATCH);
-    const results = await Promise.all(
-      slice.map((m) => {
-        const msg = studioMessageEmail({
-          name: m.name,
-          subject,
-          body,
-          ctaLabel: ctaLabel || undefined,
-          ctaUrl: ctaUrl || undefined,
-        });
-        return sendEmail(m.email, msg.subject, msg.html, msg.text).catch(() => false);
-      })
-    );
-    for (const r of results) (r ? sent++ : failed++);
-    if (i + BATCH < recipients.length) await new Promise((r) => setTimeout(r, 600));
-  }
+  const messages = recipients.map((m) => {
+    const msg = studioMessageEmail({
+      name: m.name,
+      subject,
+      body,
+      ctaLabel: ctaLabel || undefined,
+      ctaUrl: ctaUrl || undefined,
+      imageUrl: imageUrl || undefined,
+    });
+    return { to: m.email, subject: msg.subject, html: msg.html, text: msg.text };
+  });
+
+  const { sent, failed, errors } = await sendEmailBatch(messages);
 
   // Mirror it in-app so a member who missed the email still sees it.
   if (audience !== "one") {
-    for (const m of recipients) notify(m.id, `${subject}`);
+    for (const m of recipients) notify(m.id, subject);
     await saveDBAsync();
   }
 
+  const q = new URLSearchParams({ sent: String(sent) });
+  if (failed) q.set("failed", String(failed));
+  if (parts > 1) q.set("part", `${part}/${parts}`);
+  if (errors.length) q.set("apierror", errors[0].slice(0, 160));
   revalidatePath("/admin/email");
-  redirect(`/admin/email?sent=${sent}${failed ? `&failed=${failed}` : ""}`);
+  redirect(`/admin/email?${q.toString()}`);
 }
 
 
 /**
  * Edit an existing challenge.
  *
- * Only while nobody has joined. Once a member is part-way through, changing the
- * goal or the rule silently rewrites what they signed up for — someone at 8/10
- * could drop to 8/20, or a rolling window could become a fixed one and wipe
- * their progress. The rules are read live by computeProgress, so there is no
- * record of what the challenge used to be.
+ * Scoring rules only while nobody has joined. Once a member is part-way through,
+ * changing the goal or the type silently rewrites what they signed up for —
+ * someone at 8/10 could drop to 8/20, or a rolling window could become a fixed
+ * one and wipe their progress. computeProgress reads the rules live; there is no
+ * record of what a challenge used to be.
  *
- * Reward text and dates stay editable regardless; those don't change the maths.
+ * Wording, reward and dates stay editable regardless — those don't change maths.
  */
 export async function updateChallenge(formData: FormData) {
   await ensureDB();
@@ -1243,7 +1262,6 @@ export async function updateChallenge(formData: FormData) {
 
   const joined = db.challengeProgress.filter((p) => p.challengeId === id).length;
 
-  // Always safe to change — presentation and reward, not scoring.
   ch.name = String(formData.get("name") ?? ch.name).slice(0, 60) || ch.name;
   ch.emoji = String(formData.get("emoji") || ch.emoji).slice(0, 4);
   ch.description = String(formData.get("description") ?? ch.description).slice(0, 300);
@@ -1256,7 +1274,6 @@ export async function updateChallenge(formData: FormData) {
   if (startDate) ch.startDate = new Date(startDate).toISOString();
   if (endDate) ch.endDate = new Date(endDate).toISOString();
 
-  // Scoring rules — only with nobody mid-challenge.
   if (joined === 0) {
     const type = formData.get("type") as Challenge["type"] | null;
     if (type) ch.type = type;
@@ -1266,7 +1283,7 @@ export async function updateChallenge(formData: FormData) {
     if (Number.isFinite(windowDays) && windowDays > 0) ch.windowDays = Math.floor(windowDays);
     if (ch.type === "rolling_count") {
       // A rolling window measures from each member's join date; leftover fixed
-      // dates would be read as a second, conflicting constraint.
+      // dates would act as a second, conflicting constraint.
       delete ch.startDate;
       delete ch.endDate;
     }
