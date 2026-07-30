@@ -38,6 +38,13 @@ export interface Instructor {
   pinHash?: string; // hashed front-desk PIN
   staffRole?: "owner" | "instructor";
   active?: boolean; // false = hidden from booking, cannot sign in
+  /**
+   * True when this row is an activity or resource rather than a person —
+   * "RX Cycling club", "RX Master Teacher". SimplyBook models these as
+   * providers, but a member can't take a class *with* one, so they're excluded
+   * from the Meet Every Coach challenge on both sides of the count.
+   */
+  isActivity?: boolean;
   simplybookUnitId?: string;
 }
 

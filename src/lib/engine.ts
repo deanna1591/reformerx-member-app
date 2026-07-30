@@ -169,9 +169,10 @@ export function challengeGoal(ch: Challenge): number {
     // past the window, and a new coach counts as soon as they're scheduled.
     const db = getDB();
     const from = Date.now() - 90 * 86400000;
+    const activities = new Set(db.instructors.filter((i) => i.isActivity).map((i) => i.id));
     const teaching = new Set(
       db.classes
-        .filter((c) => c.instructorId && new Date(c.startsAt).getTime() >= from)
+        .filter((c) => c.instructorId && !activities.has(c.instructorId) && new Date(c.startsAt).getTime() >= from)
         .map((c) => c.instructorId)
     );
     return Math.max(1, teaching.size);
@@ -188,7 +189,7 @@ export function teachingInstructors(days = 90) {
       .filter((c) => c.instructorId && new Date(c.startsAt).getTime() >= from)
       .map((c) => c.instructorId)
   );
-  return db.instructors.filter((i) => ids.has(i.id));
+  return db.instructors.filter((i) => ids.has(i.id) && !i.isActivity);
 }
 
 export function computeProgress(memberId: string, ch: Challenge): number {
@@ -222,8 +223,13 @@ export function computeProgress(memberId: string, ch: Challenge): number {
     case "lifetime_count":
       return mine.length;
     case "instructor_variety": {
+      // Same exclusion as challengeGoal — otherwise a cycling class would count
+      // toward a target that never included cycling.
+      const activities = new Set(db.instructors.filter((i) => i.isActivity).map((i) => i.id));
       const ids = new Set(
-        mine.map((a) => db.classes.find((c) => c.id === a.classId)?.instructorId).filter(Boolean)
+        mine
+          .map((a) => db.classes.find((c) => c.id === a.classId)?.instructorId)
+          .filter((id): id is string => Boolean(id) && !activities.has(id as string))
       );
       return ids.size;
     }
