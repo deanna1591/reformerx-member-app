@@ -178,15 +178,12 @@ export function studioMessageEmail(opts: {
     <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#4A443D">Hi ${escapeHtml(first)},</p>
     ${htmlBody}
     ${cta}
-    <p style="margin:28px 0 0;padding-top:20px;border-top:1px solid #E4E1D7;font-size:13px;color:#8A8378">
-      See you at the studio.<br />ReformerX · Haštalská, Prague 1
-    </p>
   </div>
 </div>`;
 
   const text = `Hi ${first},\n\n${paragraphs.join("\n\n")}${
     opts.ctaUrl ? `\n\n${opts.ctaLabel}: ${opts.ctaUrl}` : ""
-  }\n\nSee you at the studio.\nReformerX · Haštalská, Prague 1`;
+  }`;
 
   return { subject: opts.subject, html, text };
 }
