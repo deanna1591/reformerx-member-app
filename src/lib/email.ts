@@ -6,6 +6,41 @@ const FROM = (process.env.EMAIL_FROM ?? "ReformerX <noreply@reformerx.cz>").trim
 const REPLY_TO = (process.env.EMAIL_REPLY_TO ?? "info@reformerx.cz").trim();
 export { REPLY_TO };
 
+/**
+ * Header logo.
+ *
+ * EMAIL_LOGO_URL wins, and hosting it on reformerx.cz is preferable to a
+ * supabase.co URL — spam filters weigh whether linked domains match the sender.
+ * Falls back to our Storage bucket, then to the wordmark in type, so the header
+ * is never empty.
+ *
+ * Never use a CDN link carrying an expiry token (LinkedIn's do): the image would
+ * break in every email sent after it lapses, with nothing to warn you.
+ */
+const LOGO_URL = (() => {
+  if (process.env.EMAIL_LOGO_URL) return process.env.EMAIL_LOGO_URL.trim();
+  const base = (process.env.SUPABASE_URL ?? "").trim().replace(/\/$/, "");
+  const bucket = process.env.SUPABASE_MEDIA_BUCKET || "rx-media";
+  return base ? `${base}/storage/v1/object/public/${bucket}/brand/email-logo.png` : "";
+})();
+
+/** Display height in px. Width follows the image's own proportions. */
+const LOGO_HEIGHT = Math.max(16, Math.min(120, Number(process.env.EMAIL_LOGO_HEIGHT ?? 40) || 40));
+
+/**
+ * The header block: logo if we have one, otherwise the wordmark in type.
+ *
+ * Height is fixed and width deliberately left off — the logo may be a square
+ * monogram or a wide wordmark, and a hardcoded width would squash one of them.
+ * Clients scale proportionally from height alone.
+ */
+function header(): string {
+  if (LOGO_URL && /^https:\/\//.test(LOGO_URL)) {
+    return `<img src="${LOGO_URL}" alt="ReformerX" height="${LOGO_HEIGHT}" style="display:block;height:${LOGO_HEIGHT}px;width:auto;max-width:200px;border:0;margin:0 0 18px" />`;
+  }
+  return `<p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>`;
+}
+
 export function emailConfigured(): boolean {
   return KEY.length > 0;
 }
@@ -119,7 +154,7 @@ export function loginCodeEmail(code: string, name: string) {
   const text = `Hi ${name},\n\nYour ReformerX sign-in code is ${code}\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.\n\nSee you at the studio.\nReformerX · Haštalská, Prague 1`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#F2F0EA;padding:32px">
   <div style="max-width:440px;margin:0 auto;background:#FDFCF9;border-radius:20px;padding:32px">
-    <p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>
+    ${header()}
     <h1 style="margin:0 0 16px;font-size:24px;color:#171310">Your sign-in code</h1>
     <p style="margin:0 0 20px;font-size:15px;color:#4A443D">Hi ${name}, use this code to sign in to the ReformerX member app:</p>
     <p style="margin:0 0 20px;font-size:34px;font-weight:700;letter-spacing:.18em;color:#171310">${code}</p>
@@ -182,7 +217,7 @@ export function studioMessageEmail(opts: {
 
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#F2F0EA;padding:32px">
   <div style="max-width:520px;margin:0 auto;background:#FDFCF9;border-radius:20px;padding:32px">
-    <p style="margin:0 0 4px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#8A8378">ReformerX</p>
+    ${header()}
     <h1 style="margin:0 0 20px;font-size:24px;line-height:1.25;color:#171310">${escapeHtml(opts.subject)}</h1>
     ${image}
     <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#4A443D">Hi ${escapeHtml(first)},</p>
