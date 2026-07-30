@@ -1,0 +1,45 @@
+name: Nightly database backup
+
+# 01:20 UTC — roughly 03:20 in Prague, well clear of the studio's day and of
+# the 15-minute sync. GitHub's scheduler drifts under load, so treat the time
+# as approximate; nothing here depends on the exact minute.
+on:
+  schedule:
+    - cron: "20 1 * * *"
+  workflow_dispatch: # lets you take a snapshot on demand before risky changes
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Dump app_state
+        run: node scripts/backup-db.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Name the snapshot
+        id: stamp
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: reformerx-db-${{ steps.stamp.outputs.date }}
+          path: db-backup/
+          retention-days: 30
+          if-no-files-found: error # a silent empty backup is worse than none
+
+      - name: Summary
+        run: |
+          echo "### Backup taken $(date -u +'%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat db-backup/manifest.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
