@@ -1169,7 +1169,7 @@ export async function sendStudioEmail(formData: FormData) {
   if (!subject || !body) redirect("/admin/email?error=missing");
 
   const { membershipActive } = await import("@/lib/engine");
-  const { sendEmailBatch, studioMessageEmail, emailConfigured, DAILY_LIMIT } = await import("@/lib/email");
+  const { sendEmailBatch, studioMessageEmail, emailConfigured, DAILY_LIMIT, MAX_PER_SEND } = await import("@/lib/email");
   const { studioDayKey } = await import("@/lib/time");
   if (!emailConfigured()) redirect("/admin/email?error=notconfigured");
 
@@ -1219,7 +1219,9 @@ export async function sendStudioEmail(formData: FormData) {
     redirect(`/admin/email?error=quota&remaining=${outstanding.length}`);
   }
 
-  const recipients = outstanding.slice(0, allowance);
+  // Two independent ceilings: the provider's daily quota, and how much fits in
+  // one serverless invocation. Whichever is lower wins.
+  const recipients = outstanding.slice(0, Math.min(allowance, MAX_PER_SEND));
 
   const messages = recipients.map((m) => {
     const msg = studioMessageEmail({

@@ -73,13 +73,16 @@ export function emailConfigured(): boolean {
 export const BATCH_SIZE = 100;
 
 /**
- * How many recipients one admin send may cover.
+ * Most recipients one send may cover, set by Vercel's 60s function timeout
+ * rather than by the provider.
  *
- * 1000 recipients is 10 batch calls; at ~400ms each plus 500ms spacing that is
- * roughly 10 seconds, well inside the 60s cap. The limit exists to keep the cap
- * from ever being the thing that decides who got an email.
+ * At 100 per batch request and ~400ms each plus 500ms spacing, 2000 recipients
+ * is 20 requests and roughly 18 seconds — comfortable. Beyond that the timeout
+ * starts deciding who got an email, which is exactly what this prevents.
+ *
+ * A send is limited by whichever is smaller, this or the remaining daily quota.
  */
-export const MAX_PER_SEND = 1000;
+export const MAX_PER_SEND = 2000;
 
 /**
  * Emails the provider will accept in a day.

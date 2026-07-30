@@ -1,7 +1,7 @@
 import { getT } from "@/lib/i18n";
 import { ensureDB, getDB } from "@/lib/store";
 import { membershipActive } from "@/lib/engine";
-import { emailConfigured, DAILY_LIMIT } from "@/lib/email";
+import { emailConfigured, DAILY_LIMIT, MAX_PER_SEND } from "@/lib/email";
 import { studioDayKey } from "@/lib/time";
 import { sendStudioEmail } from "@/app/actions";
 
@@ -37,6 +37,8 @@ export default async function AdminEmail({
   const today = studioDayKey(new Date());
   const sentToday = log.filter((e) => studioDayKey(e.sentAt) === today).length;
   const leftToday = Math.max(0, DAILY_LIMIT - sentToday);
+  // What this next send can actually cover.
+  const perSend = Math.min(leftToday, MAX_PER_SEND);
 
   // Campaigns still owing recipients, newest first.
   const campaigns = Array.from(new Set(log.map((e) => e.subject)))
@@ -53,8 +55,12 @@ export default async function AdminEmail({
     .sort((a, b) => b.last.localeCompare(a.last))
     .slice(0, 5);
 
-  const label = (base: string, n: number) =>
-    n > leftToday ? `${base} — ${Math.ceil(n / DAILY_LIMIT)} days at ${DAILY_LIMIT}/day` : base;
+  const label = (base: string, n: number) => {
+    if (n <= perSend) return base;
+    if (n > leftToday && leftToday < MAX_PER_SEND)
+      return `${base} — ${Math.ceil(n / DAILY_LIMIT)} days at ${DAILY_LIMIT}/day`;
+    return `${base} — ${Math.ceil(n / MAX_PER_SEND)} sends`;
+  };
 
   return (
     <main className="px-5 py-6">
@@ -184,13 +190,13 @@ export default async function AdminEmail({
         </div>
 
         <button
-          disabled={!configured || leftToday === 0}
+          disabled={!configured || perSend === 0}
           className="w-full rounded-xl2 bg-ink py-3 text-[14px] font-semibold text-white disabled:opacity-40"
         >
           {t("adm.emailSend")}
         </button>
         <p className="text-[12px] text-smoke">
-          {leftToday === 0 ? t("adm.emailNoneLeft") : t("adm.emailWillSend", { n: leftToday })}
+          {perSend === 0 ? t("adm.emailNoneLeft") : t("adm.emailWillSend", { n: perSend })}
         </p>
       </form>
     </main>
