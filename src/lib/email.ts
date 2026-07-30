@@ -52,9 +52,16 @@ function header(): string {
     return `<div style="margin:0 0 18px">${img}</div>`;
   }
 
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 22px">
+  // The arch from the member app's home screen — the same
+  // rounded-[150px_150px_22px_22px] on ink, with the same generous top padding
+  // so the logo sits under the curve rather than against it.
+  //
+  // Outlook ignores border-radius and will render a plain rectangle. That is an
+  // acceptable degradation: the panel still does its job of making a light logo
+  // visible, which is the part that matters.
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 24px">
       <tr>
-        <td bgcolor="#171310" align="center" style="background-color:#171310;border-radius:14px;padding:20px 24px">
+        <td bgcolor="#171310" align="center" style="background-color:#171310;border-radius:150px 150px 22px 22px;padding:44px 24px 22px">
           ${img.replace('style="display:block;', 'style="display:inline-block;')}
         </td>
       </tr>
