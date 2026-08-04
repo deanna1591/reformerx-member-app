@@ -272,5 +272,14 @@ export interface DB {
     lastSync?: string;
     /** Marks the one-time challenge rule repair as done. */
     challengeFixV1?: boolean;
+    /**
+     * Email subjects the owner has dismissed from "Unfinished sends".
+     *
+     * Only hides the reminder — the emailLog rows stay, so if the campaign is
+     * ever sent again the people who already received it are still skipped.
+     * Deleting the log here would cause exactly the double-send the log exists
+     * to prevent.
+     */
+    dismissedCampaigns?: string[];
   };
 }

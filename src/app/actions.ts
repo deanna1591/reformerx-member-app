@@ -1349,3 +1349,25 @@ export async function setEmailOptOut(formData: FormData) {
 
   redirect(`/unsubscribe?t=${encodeURIComponent(token)}&${optOut ? "done=1" : "resub=1"}`);
 }
+
+
+/**
+ * Hide a finished-with campaign from the "Unfinished sends" reminder.
+ *
+ * Note what this does NOT do: the emailLog rows survive. They are what stops a
+ * member being emailed the same thing twice, so dismissing a reminder must
+ * never remove them.
+ */
+export async function dismissCampaign(formData: FormData) {
+  await ensureDB();
+  requireOwner();
+  const db = getDB();
+  const subject = String(formData.get("subject") ?? "");
+  if (!subject) redirect("/admin/email");
+
+  const list = db.settings.dismissedCampaigns ?? [];
+  if (!list.includes(subject)) list.push(subject);
+  db.settings.dismissedCampaigns = list;
+  await saveDBAsync();
+  redirect("/admin/email");
+}

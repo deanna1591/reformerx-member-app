@@ -3,7 +3,8 @@ import { ensureDB, getDB } from "@/lib/store";
 import { membershipActive } from "@/lib/engine";
 import { emailConfigured, DAILY_LIMIT, MAX_PER_SEND } from "@/lib/email";
 import { studioDayKeySafe } from "@/lib/time";
-import { sendStudioEmail } from "@/app/actions";
+import { sendStudioEmail, dismissCampaign } from "@/app/actions";
+import DismissibleNotice from "@/components/DismissibleNotice";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,7 +46,9 @@ export default async function AdminEmail({
   const perSend = Math.min(leftToday, MAX_PER_SEND);
 
   // Campaigns still owing recipients, newest first.
+  const dismissed = new Set(db.settings.dismissedCampaigns ?? []);
   const campaigns = Array.from(new Set(log.map((e) => e.subject)))
+    .filter((subject) => !dismissed.has(subject))
     .map((subject) => {
       const rows = log.filter((e) => e.subject === subject);
       const sentIds = new Set(rows.map((e) => e.memberId));
@@ -78,7 +81,7 @@ export default async function AdminEmail({
       )}
 
       {searchParams.sent && (
-        <div className="mt-4 rounded-xl2 bg-sage-soft p-4">
+        <DismissibleNotice tone="good" clearTo="/admin/email">
           <p className="text-[14px] font-semibold">
             {t("adm.emailSent", { n: searchParams.sent })}
             {searchParams.failed ? ` · ${t("adm.emailFailed", { n: searchParams.failed })}` : ""}
@@ -89,10 +92,11 @@ export default async function AdminEmail({
           {searchParams.apierror && (
             <p className="mt-1 break-words text-[12px] text-tan-deep">{searchParams.apierror}</p>
           )}
-        </div>
+        </DismissibleNotice>
       )}
       {searchParams.error && (
-        <p className="mt-4 rounded-xl2 border border-line bg-white p-4 text-[13px] text-tan-deep">
+        <DismissibleNotice tone="warn" clearTo="/admin/email">
+          <p className="text-[13px] text-tan-deep">
           {searchParams.error === "missing"
             ? t("adm.emailNeedBoth")
             : searchParams.error === "norecipients"
@@ -100,13 +104,16 @@ export default async function AdminEmail({
               : searchParams.error === "quota"
                 ? t("adm.emailQuotaSpent", { n: searchParams.remaining ?? "0", limit: DAILY_LIMIT })
                 : t("adm.emailNotConfigured")}
-        </p>
+          </p>
+        </DismissibleNotice>
       )}
 
       {searchParams.done && (
-        <p className="mt-4 rounded-xl2 bg-sage-soft p-4 text-[14px] font-semibold">
-          {t("adm.emailCampaignDone", { subject: searchParams.done })}
-        </p>
+        <DismissibleNotice tone="good" clearTo="/admin/email">
+          <p className="text-[14px] font-semibold">
+            {t("adm.emailCampaignDone", { subject: searchParams.done })}
+          </p>
+        </DismissibleNotice>
       )}
 
       {/* The daily allowance, stated plainly. */}
@@ -127,13 +134,26 @@ export default async function AdminEmail({
             {campaigns
               .filter((c) => c.outstanding > 0)
               .map((c) => (
-                <li key={c.subject} className="text-[13px] text-smoke">
-                  <span className="font-medium text-ink">{c.subject}</span> —{" "}
-                  {t("adm.emailCampaignState", { sent: c.sent, left: c.outstanding })}
+                <li key={c.subject} className="flex items-start justify-between gap-3 text-[13px] text-smoke">
+                  <span>
+                    <span className="font-medium text-ink">{c.subject}</span> —{" "}
+                    {t("adm.emailCampaignState", { sent: c.sent, left: c.outstanding })}
+                  </span>
+                  <form action={dismissCampaign} className="shrink-0">
+                    <input type="hidden" name="subject" value={c.subject} />
+                    <button
+                      aria-label={t("adm.emailDismiss")}
+                      title={t("adm.emailDismiss")}
+                      className="grid h-7 w-7 place-items-center rounded-full text-[14px] leading-none text-smoke transition hover:bg-ink/5 active:scale-95"
+                    >
+                      ✕
+                    </button>
+                  </form>
                 </li>
               ))}
           </ul>
           <p className="mt-2 text-[12px] text-smoke">{t("adm.emailContinueHelp")}</p>
+          <p className="mt-1 text-[12px] text-smoke">{t("adm.emailDismissHelp")}</p>
         </div>
       )}
 
