@@ -6,13 +6,16 @@ on:
   schedule:
     # Every 15 minutes: bookings, timetable and remaining places
     - cron: "*/15 * * * *"
-    # Nightly at 03:00 UTC: full refresh including members, passes and renewal reminders
+    # Nightly at 03:00 UTC: clients, passes, coaches and renewal reminders.
+    # Split into stages because a single full sync takes ~140s and Vercel's
+    # Hobby plan kills a function at 60s — the nightly run failed every night.
     - cron: "0 3 * * *"
   workflow_dispatch: # lets you run it by hand from the Actions tab
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Choose the mode
         id: mode
@@ -23,16 +26,49 @@ jobs:
             echo "mode=quick" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Trigger the sync
+      - name: Quick sync
+        if: steps.mode.outputs.mode == 'quick'
         run: |
           code=$(curl -s -o /tmp/out.json -w "%{http_code}" \
-            --max-time 120 \
+            --max-time 90 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_URL }}/api/cron/sync?mode=${{ steps.mode.outputs.mode }}")
+            "${{ secrets.APP_URL }}/api/cron/sync?mode=quick")
           echo "HTTP $code"
-          cat /tmp/out.json
-          echo
-          if [ "$code" != "200" ]; then
-            echo "Sync failed"
-            exit 1
-          fi
+          cat /tmp/out.json 2>/dev/null || true
+          test "$code" = "200"
+
+      # The nightly full refresh, in stages. Each call stays inside the 60s cap;
+      # bookings are upserted, so a later stage failing still leaves everything
+      # the earlier ones brought in.
+      - name: Full sync — clients, passes and coaches
+        if: steps.mode.outputs.mode == 'full'
+        run: |
+          code=$(curl -s -o /tmp/full.json -w "%{http_code}" \
+            --max-time 90 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/sync?mode=full&bookingDays=7")
+          echo "HTTP $code"
+          cat /tmp/full.json 2>/dev/null || true
+          test "$code" = "200"
+
+      - name: Full sync — recent booking history
+        if: steps.mode.outputs.mode == 'full'
+        run: |
+          sleep 5
+          code=$(curl -s -o /tmp/hist.json -w "%{http_code}" \
+            --max-time 90 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/sync?mode=quick&bookingDays=90")
+          echo "HTTP $code"
+          cat /tmp/hist.json 2>/dev/null || true
+          test "$code" = "200"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Sync (${{ steps.mode.outputs.mode }}) $(date -u +'%Y-%m-%d %H:%M UTC')"
+            echo '```json'
+            cat /tmp/out.json /tmp/full.json /tmp/hist.json 2>/dev/null || echo "no response captured"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
