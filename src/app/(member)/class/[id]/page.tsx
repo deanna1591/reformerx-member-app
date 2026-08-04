@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { currentMember } from "@/lib/auth";
 import { getDB, ensureDB } from "@/lib/store";
-import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry, canBook } from "@/lib/engine";
+import { fmtTime, membershipActive, classIsFull, waitlistFor, waitlistPosition, memberWaitlistEntry, canBook, fmtDate } from "@/lib/engine";
 import { inAppBookingEnabled, simplybookBookingUrl } from "@/lib/simplybook";
 import { studioLongDate, studioDayKey, STUDIO_TZ } from "@/lib/time";
 import { getT } from "@/lib/i18n";
@@ -210,6 +210,16 @@ export default async function ClassDetail({ params }: { params: { id: string } }
                     </ConfirmButton>
                   </form>
                 )}
+              </div>
+            ) : eligibility.reason === "pass_expires" ? (
+              <div className="rounded-xl2 bg-card p-5 text-center shadow-card">
+                <p className="font-display text-[18px]">{t("class.passExpiresTitle")}</p>
+                <p className="mt-1 text-[13px] text-smoke">
+                  {t("class.passExpiresBody", { date: fmtDate(member.membershipExpires) })}
+                </p>
+                <Link href="/store" className="mt-3 inline-block rounded-full bg-ink px-5 py-2.5 text-[13px] font-semibold text-white">
+                  {t("class.renew")}
+                </Link>
               </div>
             ) : eligibility.reason === "no_credits" ? (
               <div className="rounded-xl2 bg-card p-5 text-center shadow-card">

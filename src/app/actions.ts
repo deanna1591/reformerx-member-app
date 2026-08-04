@@ -414,6 +414,8 @@ export async function reserveClass(formData: FormData) {
         ? "notif.noCredits"
         : eligibility.reason === "daily_limit"
         ? "notif.dailyLimit"
+        : eligibility.reason === "pass_expires"
+        ? "notif.passExpires"
         : "notif.noPass",
       { title: cls.title }
     );

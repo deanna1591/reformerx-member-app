@@ -188,6 +188,13 @@ export default async function SchedulePage({
                 >
                   {t("schedule.full")}
                 </Link>
+              ) : canBook(member.id, c.id).reason === "pass_expires" ? (
+                <Link
+                  href={`/class/${encodeURIComponent(c.id)}`}
+                  className="rounded-full border border-line bg-white px-3.5 py-2 text-[12px] font-semibold text-smoke"
+                >
+                  {t("schedule.afterPass")}
+                </Link>
               ) : canBook(member.id, c.id).reason === "daily_limit" ? (
                 (() => {
                   const held = bookedByDay.get(studioDayKey(c.startsAt));

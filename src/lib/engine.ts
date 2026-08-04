@@ -589,7 +589,7 @@ export function canBook(
   ignoreClassId?: string
 ): {
   ok: boolean;
-  reason: "ok" | "no_pass" | "no_credits" | "daily_limit";
+  reason: "ok" | "no_pass" | "no_credits" | "daily_limit" | "pass_expires";
   creditsLeft: number | null;
 } {
   const db = getDB();
@@ -598,6 +598,18 @@ export function canBook(
 
   const pass = passUsage(memberId);
   if (!pass) return { ok: false, reason: "no_pass", creditsLeft: null };
+
+  /* A pass covers classes up to its expiry date, not everything in the future.
+     membershipActive only asks whether the pass is valid *today*, so without
+     this a member whose Unlimited runs out on the 5th could book the 20th —
+     the studio would hold a reservation nobody has paid for. */
+  if (classId && m.membershipExpires) {
+    const target = db.classes.find((c) => c.id === classId);
+    const expiry = new Date(m.membershipExpires).getTime();
+    if (target && Number.isFinite(expiry) && new Date(target.startsAt).getTime() > expiry) {
+      return { ok: false, reason: "pass_expires", creditsLeft: null };
+    }
+  }
 
   /* Unlimited passes: one class per day. Credit packs aren't limited this way —
      each class already costs a credit. Day boundaries are studio-local, so an
