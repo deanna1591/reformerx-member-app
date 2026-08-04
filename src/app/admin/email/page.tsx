@@ -13,16 +13,20 @@ export default async function AdminEmail({
 }: {
   searchParams: {
     sent?: string; failed?: string; error?: string; to?: string;
-    apierror?: string; skipped?: string; remaining?: string; subject?: string; done?: string;
+    apierror?: string; skipped?: string; remaining?: string; subject?: string; done?: string; optedout?: string;
   };
 }) {
   await ensureDB();
   const db = getDB();
   const t = getT();
 
-  const withEmail = db.members.filter(
+  const contactable = db.members.filter(
     (m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid")
   );
+  // Counts must reflect who will actually be emailed, or "Everyone (998)" is a
+  // promise the send cannot keep.
+  const optedOutCount = contactable.filter((m) => m.emailOptOut).length;
+  const withEmail = contactable.filter((m) => !m.emailOptOut);
   const active = withEmail.filter((m) => membershipActive(m));
   const preselect = searchParams.to
     ? withEmail.find((m) => m.id === searchParams.to || m.email === searchParams.to)
@@ -79,6 +83,7 @@ export default async function AdminEmail({
             {t("adm.emailSent", { n: searchParams.sent })}
             {searchParams.failed ? ` · ${t("adm.emailFailed", { n: searchParams.failed })}` : ""}
             {searchParams.skipped ? ` · ${t("adm.emailSkipped", { n: searchParams.skipped })}` : ""}
+            {searchParams.optedout ? ` · ${t("adm.emailOptedOut", { n: searchParams.optedout })}` : ""}
             {searchParams.remaining ? ` · ${t("adm.emailRemaining", { n: searchParams.remaining })}` : ""}
           </p>
           {searchParams.apierror && (
@@ -110,6 +115,9 @@ export default async function AdminEmail({
           {t("adm.emailToday", { sent: sentToday, limit: DAILY_LIMIT, left: leftToday })}
         </p>
         <p className="mt-1 text-[12px] text-smoke">{t("adm.emailQuotaHelp")}</p>
+        {optedOutCount > 0 && (
+          <p className="mt-1 text-[12px] text-smoke">{t("adm.emailOptOutNote", { n: optedOutCount })}</p>
+        )}
       </div>
 
       {campaigns.some((c) => c.outstanding > 0) && (

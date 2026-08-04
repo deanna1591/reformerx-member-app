@@ -7,6 +7,9 @@ export function middleware(req: NextRequest) {
     !pathname.startsWith("/admin") &&
     !pathname.startsWith("/staff") &&
     !pathname.startsWith("/login") &&
+    // reached from an email with no session; requiring a login to unsubscribe
+    // is how senders end up marked as spam
+    !pathname.startsWith("/unsubscribe") &&
     !pathname.startsWith("/_next") &&
     !pathname.startsWith("/icons") &&
     !pathname.startsWith("/brand") &&

@@ -24,7 +24,14 @@ export interface Member {
   passPackageId?: string; // which SimplyBook package this pass came from
   /** The membershipExpires value we last sent a renewal reminder for. */
   renewalRemindedFor?: string; // class credits when the pass is a bundle (e.g. 10)
-  referredBy?: string; // memberId of who referred them
+  referredBy?: string;
+  /**
+   * Set when the member unsubscribes from studio emails. Studio broadcasts skip
+   * them; sign-in codes still send, because those are transactional and blocking
+   * one would lock the member out of their own account.
+   */
+  emailOptOut?: boolean;
+  emailOptOutAt?: string; // memberId of who referred them
   isAdmin?: boolean;
 }
 

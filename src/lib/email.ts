@@ -109,7 +109,16 @@ export type BatchResult = { sent: number; failed: number; errors: string[] };
  * have no idea half the studio never received it.
  */
 export async function sendEmailBatch(
-  messages: Array<{ to: string; subject: string; html: string; text?: string }>
+  messages: Array<{
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+    /** Adds RFC 8058 one-click headers, so Gmail and Yahoo show their own
+     *  Unsubscribe button beside the sender name. Bulk senders are expected to
+     *  support this; without it, people press "spam" instead. */
+    unsubscribeUrl?: string;
+  }>
 ): Promise<BatchResult> {
   if (!KEY) {
     for (const m of messages) console.log(`[email:dev] to=${m.to} subject=${m.subject}`);
@@ -134,6 +143,14 @@ export async function sendEmailBatch(
             subject: m.subject,
             html: m.html,
             text: m.text,
+            ...(m.unsubscribeUrl
+              ? {
+                  headers: {
+                    "List-Unsubscribe": `<${m.unsubscribeUrl}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }
+              : {}),
           }))
         ),
       });
@@ -228,6 +245,8 @@ export function studioMessageEmail(opts: {
   ctaUrl?: string;
   /** Absolute https URL. Data URLs are stripped by most mail clients. */
   imageUrl?: string;
+  /** Per-member unsubscribe link. Studio broadcasts only — never sign-in codes. */
+  unsubscribeUrl?: string;
 }) {
   const first = (opts.name || "").split(" ")[0] || "there";
   const paragraphs = opts.body
@@ -265,14 +284,20 @@ export function studioMessageEmail(opts: {
     ${cta}
     <p style="margin:28px 0 0;padding-top:20px;border-top:1px solid #E4E1D7;font-size:13px;color:#8A8378">
       ReformerX · Haštalská, Prague 1<br />
-      Reply to this email or write to <a href="mailto:${REPLY_TO}" style="color:#8A8378">${REPLY_TO}</a>
+      Reply to this email or write to <a href="mailto:${REPLY_TO}" style="color:#8A8378">${REPLY_TO}</a>${
+        opts.unsubscribeUrl
+          ? `<br /><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#8A8378">Unsubscribe from studio emails</a>`
+          : ""
+      }
     </p>
   </div>
 </div>`;
 
   const text = `Hi ${first},\n\n${paragraphs.join("\n\n")}${
     opts.ctaUrl ? `\n\n${opts.ctaLabel}: ${opts.ctaUrl}` : ""
-  }\n\nReformerX · Haštalská, Prague 1\nReply to this email or write to ${REPLY_TO}`;
+  }\n\nReformerX · Haštalská, Prague 1\nReply to this email or write to ${REPLY_TO}${
+    opts.unsubscribeUrl ? `\nUnsubscribe: ${opts.unsubscribeUrl}` : ""
+  }`;
 
   return { subject: opts.subject, html, text };
 }

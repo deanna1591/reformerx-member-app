@@ -1195,8 +1195,11 @@ export async function sendStudioEmail(formData: FormData) {
           ? db.members.filter((m) => !membershipActive(m))
           : db.members.slice();
 
+  // Anyone who opted out is removed here, so no later stage can reach them.
+  const optedOut = pool.filter((m) => m.emailOptOut).length;
   pool = pool
     .filter((m) => m.email && m.email.includes("@") && !m.email.endsWith("@example.invalid"))
+    .filter((m) => !m.emailOptOut)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (pool.length === 0) redirect("/admin/email?error=norecipients");
@@ -1225,7 +1228,9 @@ export async function sendStudioEmail(formData: FormData) {
   // one serverless invocation. Whichever is lower wins.
   const recipients = outstanding.slice(0, Math.min(allowance, MAX_PER_SEND));
 
+  const { unsubscribeUrl } = await import("@/lib/unsubscribe");
   const messages = recipients.map((m) => {
+    const unsub = unsubscribeUrl(m.id);
     const msg = studioMessageEmail({
       name: m.name,
       subject,
@@ -1233,8 +1238,9 @@ export async function sendStudioEmail(formData: FormData) {
       ctaLabel: ctaLabel || undefined,
       ctaUrl: ctaUrl || undefined,
       imageUrl: imageUrl || undefined,
+      unsubscribeUrl: unsub,
     });
-    return { to: m.email, subject: msg.subject, html: msg.html, text: msg.text };
+    return { to: m.email, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: unsub };
   });
 
   const { sent, failed, errors } = await sendEmailBatch(messages);
@@ -1257,6 +1263,7 @@ export async function sendStudioEmail(formData: FormData) {
   const q = new URLSearchParams({ sent: String(sent) });
   if (failed) q.set("failed", String(failed));
   if (already.size) q.set("skipped", String(already.size));
+  if (optedOut) q.set("optedout", String(optedOut));
   if (remaining > 0) q.set("remaining", String(remaining));
   if (errors.length) q.set("apierror", errors[0].slice(0, 160));
   q.set("subject", subject);
@@ -1317,4 +1324,28 @@ export async function updateChallenge(formData: FormData) {
   revalidatePath("/admin/challenges");
   revalidatePath("/challenges");
   redirect(`/admin/challenges?updated=${encodeURIComponent(ch.name)}${joined > 0 ? "&locked=1" : ""}`);
+}
+
+
+/**
+ * Set or clear a member's email opt-out. Reached from the unsubscribe page,
+ * which has no session — the signed token is the authorisation.
+ */
+export async function setEmailOptOut(formData: FormData) {
+  const { verifyUnsubscribeToken } = await import("@/lib/unsubscribe");
+  const token = String(formData.get("token") ?? "");
+  const memberId = verifyUnsubscribeToken(token);
+  if (!memberId) redirect("/unsubscribe");
+
+  await ensureDB();
+  const db = getDB();
+  const member = db.members.find((m) => m.id === memberId);
+  if (!member) redirect("/unsubscribe");
+
+  const optOut = String(formData.get("optOut") ?? "1") === "1";
+  member.emailOptOut = optOut;
+  member.emailOptOutAt = optOut ? new Date().toISOString() : undefined;
+  await saveDBAsync();
+
+  redirect(`/unsubscribe?t=${encodeURIComponent(token)}&${optOut ? "done=1" : "resub=1"}`);
 }
